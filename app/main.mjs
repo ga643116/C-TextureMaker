@@ -3,13 +3,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
-import {PATTERNS,SHAPE_PATTERNS,createDocument,createLayer,normalizeDocument,renderSVG} from './engine.mjs';
+import {PATTERNS,SHAPE_PATTERNS,createDocument,createLayer,createImageMaskLayer,isImageMaskLayer,imageMaskGeometry,normalizeDocument,renderSVG} from './engine.mjs';
 import {translator,localized} from './i18n.mjs';
 import {generate} from './vendor/ui-generation.js';
 import {persistentStorage} from './storage.mjs';
 import {normalizeShapeLibrary,addShape,removeShape,renameShape,importShapeFile} from './shape-library.mjs';
 import {strokeHits,nearestCell} from './cell-brush.mjs';
-import {grayscaleImage,autoThreshold,binaryPreview,classifyCells} from './image-cells.mjs';
+import {grayscaleImage,autoThreshold} from './image-threshold.mjs';
 
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const clone=v=>JSON.parse(JSON.stringify(v));
@@ -31,9 +31,13 @@ const nativeHost=window.chrome?.webview;
 let windowMaximized=false,entranceSequence=0;
 document.documentElement.dataset.desktop=String(Boolean(nativeHost));
 const active=()=>doc.layers.find(l=>l.id===selected)??doc.layers[0];
+let lastPatternId=selected,maskImportTarget=null,maskImportDocument=null,maskImportSequence=0;
+const activePattern=()=>!isImageMaskLayer(active())?active():doc.layers.find(l=>l.id===lastPatternId&&!isImageMaskLayer(l))??doc.layers.find(l=>!isImageMaskLayer(l));
+const layerName=layer=>isImageMaskLayer(layer)?layer.name:label(pattern(layer.type).name);
 const pattern=id=>PATTERNS.find(p=>p.id===id)??PATTERNS[0];
 const label=x=>localized(x,lang);
 const glyphs={
+ image:'<rect x="1.5" y="2" width="13" height="12" rx="1"/><circle cx="5" cy="5.5" r="1"/><path d="m2 12 4-4 3 3 2-2 3 3"/>',
  pencil:'<path d="m10.5 1.5 4 4-8.5 8.5-5 1 1-5zM8.5 3.5l4 4"/>',
  cursor:'<path d="M3 1.5 13 8l-4.6 1.1L6 13.5zM8.4 9.4l2.2 4.1"/>',hand:'<path d="M5 8V3.5a1 1 0 0 1 2 0V7 2.5a1 1 0 0 1 2 0V7 3.5a1 1 0 0 1 2 0V8 5a1 1 0 0 1 2 0v5c0 3-2 5-5 5-2 0-3-1-4-3L2 8.5a1.2 1.2 0 0 1 1.8-1.4L5 8z"/>',
  windowMaximize:'<rect x="3" y="3" width="10" height="10" rx=".5"/>',windowRestore:'<path d="M5 3V1h10v10h-2M1 5h10v10H1z"/>',
@@ -51,7 +55,13 @@ function colorField(key,text,value,target='layer'){return `<div class="field"><l
 function details(key,text,content,open=true){return `<details data-section="${key}" ${open?'open':''}><summary>${esc(text)}</summary><div class="detail-content">${content}</div></details>`;}
 function defaultThumb(p){if(!thumbs.has(p.id)){const d=createDocument();d.width=d.height=1024;d.transparent=true;d.layers=[createLayer(p.id,`thumb-${p.id}`)];d.layers[0].color='#687354';d.layers[0].secondary='#929e7e';d.layers[0].params={...p.defaults};for(const key of ['strokeWidth','innerWidth','outerWidth'])if(key in d.layers[0].params)d.layers[0].params[key]=Math.min(8,Math.max(5,d.layers[0].params[key]));try{thumbs.set(p.id,`<img src="data:image/svg+xml,${encodeURIComponent(renderSVG(d))}" alt="">`);}catch{thumbs.set(p.id,'');}}return thumbs.get(p.id);}
 function renderPatternList(){const items=PATTERNS.filter(p=>(category==='all'||p.category===category)&&(!query||Object.values(p.name).some(n=>n.toLowerCase().includes(query.toLowerCase()))));$('#pattern-list').innerHTML=items.map(p=>`<button class="pattern-card ${active().type===p.id?'active':''}" data-pattern="${p.id}" title="${esc(label(p.description))}" aria-label="${esc(label(p.name))}" aria-pressed="${active().type===p.id}"><div class="thumb" aria-hidden="true">${defaultThumb(p)}</div><span class="name">${esc(label(p.name))}</span></button>`).join('')||`<p class="empty">${esc(t('noResults'))}</p>`;}
-function renderLayers(){const l=active();$('#layer-list').innerHTML=[...doc.layers].reverse().map((layer,i)=>`<div class="layer ${layer.id===l.id?'selected':''}"><button class="icon-btn" data-action="visibility" data-id="${esc(layer.id)}" aria-label="${esc(t(layer.visible?'hide':'visible'))}" title="${esc(t(layer.visible?'hide':'visible'))}">${icon(layer.visible?'eye':'eyeOff')}</button><button class="layer-select" data-action="select-layer" data-id="${esc(layer.id)}" title="${esc(label(pattern(layer.type).name))}"><span class="mono">${String(doc.layers.length-i).padStart(2,'0')}</span> ${esc(label(pattern(layer.type).name))}</button></div>`).join('');}
+function renderLayers(){
+ const current=active();
+ $('#layer-list').innerHTML=[...doc.layers].reverse().map((layer,i)=>{
+  const mask=isImageMaskLayer(layer),name=layerName(layer),chosen=layer.id===current.id;
+  return `<div class="layer ${mask?'image-mask-layer':''} ${chosen?'selected':''}" data-layer-type="${layer.type}"><div class="layer-row"><button class="icon-btn" data-action="visibility" data-id="${esc(layer.id)}" aria-label="${esc(t(layer.visible?'hide':'visible'))}" title="${esc(t(layer.visible?'hide':'visible'))}">${icon(layer.visible?'eye':'eyeOff')}</button><button class="layer-select" data-action="select-layer" data-id="${esc(layer.id)}" title="${esc(name)}">${mask?`<img class="layer-thumbnail" src="${esc(layer.image)}" alt="">`:`<span class="mono">${String(doc.layers.length-i).padStart(2,'0')}</span>`}<span class="layer-name">${esc(name)}</span>${mask?icon('image'):''}</button></div>${mask&&chosen?`<div class="mask-layer-controls"><label for="mask-threshold-mini">${esc(t('threshold'))}<output data-mask-threshold>${layer.threshold}</output></label><input id="mask-threshold-mini" aria-label="${esc(t('threshold'))}" type="range" data-target="layer" data-key="threshold" min="0" max="255" step="1" value="${layer.threshold}"><div class="mask-layer-actions"><button class="text-btn" data-action="mask-auto-threshold">${esc(t('autoThreshold'))}</button><button class="text-btn" data-action="mask-invert" aria-pressed="${layer.invert}">${esc(t('invertShort'))}</button></div></div>`:''}</div>`;
+ }).join('');
+}
 function renderControl(c,l,p){
  const v=l.params[c.key]??p.defaults[c.key];let html;
  if(c.type==='toggle')html=checkbox(c.key,label(c.label),v,'params');
@@ -70,16 +80,21 @@ function geometryFields(l,p){
 function brushControls(){return ['paint','erase'].includes(editMode)?numeric('brushSize',t('brushSize'),brushSize,4,4096,4,'editor'):editMode==='connect'?numeric('linkWidth',t('linkWidth'),active().linkWidth,.25,128,.25,'layer'):'';}
 function cellToolbar(){return `<span>${esc(t('editCells'))}</span><select data-action="edit-mode-select" aria-label="${esc(t('editCells'))}">${['toggle','erase','paint','connect'].map(m=>`<option value="${m}" ${m===editMode?'selected':''}>${esc(t(m))}</option>`).join('')}</select>${editMode==='connect'?`<span class="connect-status">${esc(t(connectStart?'connectSecond':'connectFirst'))}</span>`:''}${['paint','erase'].includes(editMode)?`<label class="brush-inline">${esc(t('brushSize'))}<input type="number" data-target="editor" data-key="brushSize" aria-label="${esc(t('brushSize'))}" min="4" max="4096" step="4" value="${brushSize}"></label>`:''}`;}
 function setEditMode(mode){finishPointer();editMode=mode;connectStart=null;renderInspector();const bar=$('.cell-edit-bar');if(bar)bar.innerHTML=cellToolbar();updateCanvasCursor();updateConnectGuide();}
-function renderInspector(savedSections=null){const l=active(),p=pattern(l.type);const openSections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
- const fields=geometryFields(l,p);
- const palettes=[['#34392e','#97a184'],['#151515','#868686'],['#f0ebdd','#9b927e'],['#e3edcd','#839968'],['#66789a','#b7c5df'],['#c16a46','#e6ac83'],['#916b80','#d9b2c7']];
- let extra='';if(['dots','polygons'].includes(l.type))extra=details('cells',t('editCells'),`<div class="cell-modes">${['toggle','erase','paint','connect'].map(m=>`<button data-action="edit-mode" data-mode="${m}" class="${editMode===m?'active':''}">${esc(t(m))}</button>`).join('')}</div>${brushControls()}<p class="helper">${esc(t(editMode==='connect'?'connectHint':'cellHint'))}</p><div class="cell-extra-actions"><button class="button primary" data-action="image-cells">${icon('grid')}${esc(t('imageCells'))}</button><button class="button" data-action="restore-cells">${esc(t('restoreCells'))}</button><button class="button" data-action="clear-links" ${l.cellLinks?.length?'':'disabled'}>${esc(t('clearLinks'))}</button></div>`);
- if(l.type==='halftone')extra=details('import',t('uploadMask'),`<div class="import-buttons"><button class="button" data-action="import-mask">${icon('plus')}${esc(t('uploadMask'))}</button>${l.mask?`<button class="button" data-action="clear-mask">${icon('close')}${esc(t('clearMask'))}</button>`:''}</div><p class="helper">${esc(t('importHint'))}</p>`,false);
- $('#inspector').innerHTML=`<div class="inspector-head"><div class="eyebrow">${esc(t('properties'))}<span class="mono" style="float:right">${String(PATTERNS.indexOf(p)+1).padStart(2,'0')} / 15</span></div><h1>${esc(label(p.name))}</h1><p>${esc(label(p.description))}</p><div class="actions"><button class="button" data-action="random">${icon('random')}${esc(t('random'))}</button>${ib('reset','reset','reset')}${ib('save-preset','star','savePreset')}</div></div>${details('geometry',t('geometry'),fields+(l.type==='barcode'?`<p class="helper">${esc(t('decorative'))}</p>`:''))}${extra}${details('appearance',t('appearance'),`<div class="field-pair">${colorField('color',t('color'),l.color)}${colorField('secondary',t('secondary'),l.secondary)}</div>${l.customMotif?`${checkbox('motifTint',t('motifTint'),l.motifTint,'layer')}<p class="helper">${esc(t('motifTintHint'))}</p>`:''}${numeric('opacity',t('opacity'),l.opacity,0,1,.01,'layer')}<div class="swatches">${palettes.map(([a,b])=>`<button class="swatch" data-action="palette" data-color="${a}" data-secondary="${b}" style="background:${a};--swatch-b:${b}" aria-label="${a} / ${b}" title="${a} / ${b}"></button>`).join('')}</div>`)}${details('transform',t('transform'),numeric('rotation',t('rotation'),l.rotation,-180,180,1,'layer')+numeric('scale',t('scale'),l.scale,.1,2,.01,'layer')+numeric('offsetX',t('offsetX'),l.offsetX,-doc.width,doc.width,1,'layer')+numeric('offsetY',t('offsetY'),l.offsetY,-doc.height,doc.height,1,'layer'),false)}${details('canvas',t('canvas'),`<div class="field"><label class="field-title" for="size-preset">${esc(t('proportion'))}</label><select class="select-wide" id="size-preset" data-action="size-preset"><option value="custom">${doc.width} × ${doc.height}</option><option value="512,512">512 × 512</option><option value="1024,1024">1024 × 1024</option><option value="2048,2048">2048 × 2048</option><option value="1920,1080">1920 × 1080</option><option value="1080,1920">1080 × 1920</option></select></div><div class="dimensions"><label>${esc(t('width'))}<input type="number" min="128" max="4096" step="1" data-target="doc" data-key="width" value="${doc.width}"></label><label>${esc(t('height'))}<input type="number" min="128" max="4096" step="1" data-target="doc" data-key="height" value="${doc.height}"></label></div><div style="height:15px"></div>${checkbox('transparent',t('transparent'),doc.transparent)}${colorField('background',t('background'),doc.background,'doc')}${checkbox('seamless',t('seamless'),doc.seamless)}<p class="helper">${esc(t('seamlessHint'))}</p>${numeric('seed',t('seed'),doc.seed,1,999999,1,'doc')}`,true)}`;
+function canvasControls(){return details('canvas',t('canvas'),`<div class="field"><label class="field-title" for="size-preset">${esc(t('proportion'))}</label><select class="select-wide" id="size-preset" data-action="size-preset"><option value="custom">${doc.width} × ${doc.height}</option><option value="512,512">512 × 512</option><option value="1024,1024">1024 × 1024</option><option value="2048,2048">2048 × 2048</option><option value="1920,1080">1920 × 1080</option><option value="1080,1920">1080 × 1920</option></select></div><div class="dimensions"><label>${esc(t('width'))}<input type="number" min="128" max="4096" step="1" data-target="doc" data-key="width" value="${doc.width}"></label><label>${esc(t('height'))}<input type="number" min="128" max="4096" step="1" data-target="doc" data-key="height" value="${doc.height}"></label></div><div style="height:15px"></div>${checkbox('transparent',t('transparent'),doc.transparent)}${colorField('background',t('background'),doc.background,'doc')}${checkbox('seamless',t('seamless'),doc.seamless)}<p class="helper">${esc(t('seamlessHint'))}</p>${numeric('seed',t('seed'),doc.seed,1,999999,1,'doc')}`,true);}
+function renderMaskInspector(savedSections=null){
+ const l=active(),openSections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
+ $('#inspector').innerHTML=`<div class="inspector-head"><div class="eyebrow">${esc(t('imageMask'))}</div><h1 class="mask-name">${esc(l.name)}</h1><p>${esc(t('maskScope'))}</p><div class="actions"><button class="button" data-action="mask-replace" title="${esc(t('maskFormats'))}">${icon('image')}${esc(t('replaceImage'))}</button>${ib('mask-rename','pencil','rename')}${ib('save-preset','star','savePreset')}</div></div>${details('mask',t('maskRegion'),`<div class="mask-source-preview"><img src="${esc(l.image)}" alt="${esc(l.name)}"></div>${numeric('threshold',t('threshold'),l.threshold,0,255,1,'layer')}<button class="button mask-auto" data-action="mask-auto-threshold">${esc(t('autoThreshold'))}</button>${checkbox('invert',t('invertImage'),l.invert,'layer')}<p class="helper">${esc(t('maskThresholdHint'))}</p>`)}${details('mask-transform',t('maskTransform'),`<div class="field"><label for="mask-fit">${esc(t('imageFit'))}</label><select id="mask-fit" class="select-wide" data-target="layer" data-key="fit"><option value="contain" ${l.fit==='contain'?'selected':''}>${esc(t('containImage'))}</option><option value="cover" ${l.fit==='cover'?'selected':''}>${esc(t('coverImage'))}</option></select></div>${numeric('scale',t('scale'),l.scale,.05,8,.01,'layer')}${numeric('rotation',t('rotation'),l.rotation,-180,180,1,'layer')}${numeric('offsetX',t('offsetX'),l.offsetX,-Math.max(doc.width,Math.abs(l.offsetX)),Math.max(doc.width,Math.abs(l.offsetX)),1,'layer')}${numeric('offsetY',t('offsetY'),l.offsetY,-Math.max(doc.height,Math.abs(l.offsetY)),Math.max(doc.height,Math.abs(l.offsetY)),1,'layer')}${checkbox('flipX',t('flipX'),l.flipX,'layer')}${checkbox('flipY',t('flipY'),l.flipY,'layer')}<button class="button" data-action="mask-reset-transform">${icon('reset')}${esc(t('resetImageTransform'))}</button><p class="helper">${esc(t('maskDragHint'))}</p>`)}${canvasControls()}`;
  for(const el of $$('.inspector details'))if(openSections.has(el.dataset.section))el.open=openSections.get(el.dataset.section);
 }
-function renderApp(){finishPointer();motionRun?.cancel();const sections=new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));const listScroll=$('#pattern-list')?.scrollTop??0,inspectorScroll=$('#pattern-list .active')?.dataset.pattern===active().type?($('#inspector')?.scrollTop??0):0;document.documentElement.lang={zh:'zh-Hant',en:'en',ja:'ja'}[lang];document.documentElement.dataset.theme=prefs.theme==='dark'?'dark':'light';const p=pattern(active().type);
- $('#app').innerHTML=`<header class="topbar"><div class="brand"><img src="icon.svg" alt=""><span>C-TextureMaker</span><small>1.2.0</small></div><button class="document-name text-btn" data-action="rename" title="${esc(t('rename'))}">${icon('file')}<span>${esc(doc.name)}</span></button><div class="top-actions">${ib('new','plus','newDoc')}${tb('open','open','open')}${tb('save','save','save')}<span class="divider"></span>${ib('undo','undo','undo',past.length?'':'disabled')}${ib('redo','redo','redo',future.length?'':'disabled')}<span class="divider"></span>${ib('theme',prefs.theme==='dark'?'sun':'moon','theme')}<select class="language-select" data-action="language" aria-label="${esc(t('language'))}"><option value="zh" ${lang==='zh'?'selected':''}>繁體中文</option><option value="en" ${lang==='en'?'selected':''}>English</option><option value="ja" ${lang==='ja'?'selected':''}>日本語</option></select>${ib('help','help','help')}<button class="button primary export-top" data-action="export">${icon('export')}${esc(t('export'))}</button></div></header><main class="workspace ${focus?'focus':''}"><aside class="library" aria-label="${esc(t('library'))}"><div class="library-head"><div class="section-title">${esc(t('library'))}<span class="mono">15</span></div><label class="search-box">${icon('search')}<input id="pattern-search" aria-label="${esc(t('search'))}" placeholder="${esc(t('search'))}" value="${esc(query)}"></label><nav class="category-tabs">${['all','radial','pattern','organic','technical'].map(c=>`<button data-action="category" data-category="${c}" class="${category===c?'active':''}">${esc(t(c))}</button>`).join('')}</nav></div><div id="pattern-list" class="pattern-list"></div><div class="library-bottom"><div class="section-title">${esc(t('layers'))}${ib('add-layer','plus','addLayer')}</div><div id="layer-list" class="layer-list"></div><div class="layer-tools">${ib('layer-up','up','moveUp')}${ib('layer-down','down','moveDown')}${ib('duplicate','copy','duplicate')}${ib('delete','trash','remove')}</div></div><button class="preset-launch" data-action="presets">${icon('star')}<span>${esc(t('presets'))}</span>${icon('chevron')}</button></aside><section class="stage" aria-label="${esc(t('canvas'))}"><div class="stage-header"><span class="art-title" id="art-title">${esc(label(p.name))}</span><span class="mono" id="dimensions-label">${doc.width} × ${doc.height}</span><div class="views"><button data-action="view-single" class="${repeat===1?'active':''}">${esc(t('single'))}</button><button data-action="view-repeat" class="${repeat===3?'active':''}">${esc(t('repeat'))}</button></div>${ib('edges','grid','tileEdges')}</div><div class="viewport" id="viewport" data-canvas-tool="${canvasTool}"><div id="brush-cursor" class="brush-cursor" hidden></div><svg id="connect-guide" class="connect-guide" aria-hidden="true" hidden><line/><circle r="6"/></svg><div class="stage-status">${esc(t('live'))}</div><div class="artboard-wrap" id="artboard-wrap"><div class="artboard-label" id="artboard-label"></div><div class="artboard" id="artboard"></div><div id="tile-grid" class="tile-grid" hidden></div></div>${['dots','polygons'].includes(active().type)?`<div class="cell-edit-bar">${cellToolbar()}</div>`:''}</div><div class="stage-foot"><span class="stage-caption">${esc(t('vector'))}</span><div class="zoom-controls">${ib('tool-cursor','cursor','cursorTool',`aria-pressed="${canvasTool==='cursor'}"`)}${ib('tool-hand','hand','handTool',`aria-pressed="${canvasTool==='hand'}"`)}<span class="divider"></span>${ib('zoom-out','minus','zoomOut')}<span id="zoom-label" class="mono">100%</span>${ib('zoom-in','plus','zoomIn')}<span class="divider"></span>${ib('fit','fit','fit')}</div><div class="stage-focus">${ib('focus','expand',focus?'showPanel':'hidePanel')}</div></div></section><aside class="inspector" id="inspector" aria-label="${esc(t('properties'))}"></aside></main><footer class="statusbar"><span class="local-dot"></span><span>${esc(t('offline'))}</span><span class="line"></span><span id="save-status">${esc(t(saveState))}</span><span class="right"><span class="canvas-help">${esc(t('canvasHint'))}</span><span id="render-time" class="mono"></span><button type="button" id="alpha-status" class="pill alpha-status-toggle" data-action="toggle-alpha" aria-pressed="${doc.transparent}" aria-label="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}" title="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}">${esc(t(doc.transparent?'alpha':'solid'))}</button></span></footer>`;
+function renderInspector(savedSections=null){const l=active();if(isImageMaskLayer(l)){renderMaskInspector(savedSections);return;}const p=pattern(l.type);const openSections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
+ const fields=geometryFields(l,p);
+ const palettes=[['#34392e','#97a184'],['#151515','#868686'],['#f0ebdd','#9b927e'],['#e3edcd','#839968'],['#66789a','#b7c5df'],['#c16a46','#e6ac83'],['#916b80','#d9b2c7']];
+ let extra='';if(['dots','polygons'].includes(l.type))extra=details('cells',t('editCells'),`<div class="cell-modes">${['toggle','erase','paint','connect'].map(m=>`<button data-action="edit-mode" data-mode="${m}" class="${editMode===m?'active':''}">${esc(t(m))}</button>`).join('')}</div>${brushControls()}<p class="helper">${esc(t(editMode==='connect'?'connectHint':'cellHint'))}</p><div class="cell-extra-actions"><button class="button primary" data-action="add-image-mask">${icon('image')}${esc(t('addImageMask'))}</button><button class="button" data-action="restore-cells">${esc(t('restoreCells'))}</button><button class="button" data-action="clear-links" ${l.cellLinks?.length?'':'disabled'}>${esc(t('clearLinks'))}</button></div>`);
+ if(l.type==='halftone')extra=details('import',t('uploadMask'),`<div class="import-buttons"><button class="button" data-action="import-mask">${icon('plus')}${esc(t('uploadMask'))}</button>${l.mask?`<button class="button" data-action="clear-mask">${icon('close')}${esc(t('clearMask'))}</button>`:''}</div><p class="helper">${esc(t('importHint'))}</p>`,false);
+ $('#inspector').innerHTML=`<div class="inspector-head"><div class="eyebrow">${esc(t('properties'))}<span class="mono" style="float:right">${String(PATTERNS.indexOf(p)+1).padStart(2,'0')} / 15</span></div><h1>${esc(label(p.name))}</h1><p>${esc(label(p.description))}</p><div class="actions"><button class="button" data-action="random">${icon('random')}${esc(t('random'))}</button>${ib('reset','reset','reset')}${ib('save-preset','star','savePreset')}</div></div>${details('geometry',t('geometry'),fields+(l.type==='barcode'?`<p class="helper">${esc(t('decorative'))}</p>`:''))}${extra}${details('appearance',t('appearance'),`<div class="field-pair">${colorField('color',t('color'),l.color)}${colorField('secondary',t('secondary'),l.secondary)}</div>${l.customMotif?`${checkbox('motifTint',t('motifTint'),l.motifTint,'layer')}<p class="helper">${esc(t('motifTintHint'))}</p>`:''}${numeric('opacity',t('opacity'),l.opacity,0,1,.01,'layer')}<div class="swatches">${palettes.map(([a,b])=>`<button class="swatch" data-action="palette" data-color="${a}" data-secondary="${b}" style="background:${a};--swatch-b:${b}" aria-label="${a} / ${b}" title="${a} / ${b}"></button>`).join('')}</div>`)}${details('transform',t('transform'),numeric('rotation',t('rotation'),l.rotation,-180,180,1,'layer')+numeric('scale',t('scale'),l.scale,.1,2,.01,'layer')+numeric('offsetX',t('offsetX'),l.offsetX,-doc.width,doc.width,1,'layer')+numeric('offsetY',t('offsetY'),l.offsetY,-doc.height,doc.height,1,'layer'),false)}${canvasControls()}`;
+ for(const el of $$('.inspector details'))if(openSections.has(el.dataset.section))el.open=openSections.get(el.dataset.section);
+}
+function renderApp(){finishPointer();motionRun?.cancel();const sections=new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));const listScroll=$('#pattern-list')?.scrollTop??0,inspectorScroll=$('#pattern-list .active')?.dataset.pattern===active().type?($('#inspector')?.scrollTop??0):0;document.documentElement.lang={zh:'zh-Hant',en:'en',ja:'ja'}[lang];document.documentElement.dataset.theme=prefs.theme==='dark'?'dark':'light';$('#app').innerHTML=`<header class="topbar"><div class="brand"><img src="icon.svg" alt=""><span>C-TextureMaker</span><small>1.3.0</small></div><button class="document-name text-btn" data-action="rename" title="${esc(t('rename'))}">${icon('file')}<span>${esc(doc.name)}</span></button><div class="top-actions">${ib('new','plus','newDoc')}${tb('open','open','open')}${tb('save','save','save')}<span class="divider"></span>${ib('undo','undo','undo',past.length?'':'disabled')}${ib('redo','redo','redo',future.length?'':'disabled')}<span class="divider"></span>${ib('theme',prefs.theme==='dark'?'sun':'moon','theme')}<select class="language-select" data-action="language" aria-label="${esc(t('language'))}"><option value="zh" ${lang==='zh'?'selected':''}>繁體中文</option><option value="en" ${lang==='en'?'selected':''}>English</option><option value="ja" ${lang==='ja'?'selected':''}>日本語</option></select>${ib('help','help','help')}<button class="button primary export-top" data-action="export">${icon('export')}${esc(t('export'))}</button></div></header><main class="workspace ${focus?'focus':''}"><aside class="library" aria-label="${esc(t('library'))}"><div class="library-head"><div class="section-title">${esc(t('library'))}<span class="mono">15</span></div><label class="search-box">${icon('search')}<input id="pattern-search" aria-label="${esc(t('search'))}" placeholder="${esc(t('search'))}" value="${esc(query)}"></label><nav class="category-tabs">${['all','radial','pattern','organic','technical'].map(c=>`<button data-action="category" data-category="${c}" class="${category===c?'active':''}">${esc(t(c))}</button>`).join('')}</nav></div><div id="pattern-list" class="pattern-list"></div><div class="library-bottom"><div class="section-title">${esc(t('layers'))}<div class="layer-add-actions">${ib('add-image-mask','image','addImageMask')}${ib('add-layer','plus','addLayer')}</div></div><div id="layer-list" class="layer-list"></div><div class="layer-tools">${ib('layer-up','up','moveUp')}${ib('layer-down','down','moveDown')}${ib('duplicate','copy','duplicate')}${ib('delete','trash','remove')}</div></div><button class="preset-launch" data-action="presets">${icon('star')}<span>${esc(t('presets'))}</span>${icon('chevron')}</button></aside><section class="stage" aria-label="${esc(t('canvas'))}"><div class="stage-header"><span class="art-title" id="art-title">${esc(layerName(active()))}</span><span class="mono" id="dimensions-label">${doc.width} × ${doc.height}</span><div class="views"><button data-action="view-single" class="${repeat===1?'active':''}">${esc(t('single'))}</button><button data-action="view-repeat" class="${repeat===3?'active':''}">${esc(t('repeat'))}</button></div>${ib('edges','grid','tileEdges')}</div><div class="viewport" id="viewport" data-canvas-tool="${canvasTool}"><div id="brush-cursor" class="brush-cursor" hidden></div><svg id="connect-guide" class="connect-guide" aria-hidden="true" hidden><line/><circle r="6"/></svg><div class="stage-status">${esc(t('live'))}</div><div class="artboard-wrap" id="artboard-wrap"><div class="artboard-label" id="artboard-label"></div><div class="artboard" id="artboard"></div><div id="tile-grid" class="tile-grid" hidden></div><svg id="mask-overlay" class="mask-overlay" aria-label="${esc(t('maskTransform'))}" hidden></svg></div>${['dots','polygons'].includes(active().type)?`<div class="cell-edit-bar">${cellToolbar()}</div>`:''}</div><div class="stage-foot"><span class="stage-caption">${esc(t('vector'))}</span><div class="zoom-controls">${ib('tool-cursor','cursor','cursorTool',`aria-pressed="${canvasTool==='cursor'}"`)}${ib('tool-hand','hand','handTool',`aria-pressed="${canvasTool==='hand'}"`)}<span class="divider"></span>${ib('zoom-out','minus','zoomOut')}<span id="zoom-label" class="mono">100%</span>${ib('zoom-in','plus','zoomIn')}<span class="divider"></span>${ib('fit','fit','fit')}</div><div class="stage-focus">${ib('focus','expand',focus?'showPanel':'hidePanel')}</div></div></section><aside class="inspector" id="inspector" aria-label="${esc(t('properties'))}"></aside></main><footer class="statusbar"><span class="local-dot"></span><span>${esc(t('offline'))}</span><span class="line"></span><span id="save-status">${esc(t(saveState))}</span><span class="right"><span class="canvas-help">${esc(t('canvasHint'))}</span><span id="render-time" class="mono"></span><button type="button" id="alpha-status" class="pill alpha-status-toggle" data-action="toggle-alpha" aria-pressed="${doc.transparent}" aria-label="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}" title="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}">${esc(t(doc.transparent?'alpha':'solid'))}</button></span></footer>`;
  if(nativeHost){$('.topbar').insertAdjacentHTML('beforeend',`<div class="window-controls">${ib('window-minimize','minus','minimize')}${ib('window-maximize','windowMaximize','maximize')}${ib('window-close','close','closeWindow')}</div>`);updateWindowState(windowMaximized);nativeHost.postMessage({type:'window',action:'theme',theme:prefs.theme==='dark'?'dark':'light'});nativeHost.postMessage({type:'window',action:'state'});}
  renderPatternList();renderLayers();renderInspector(sections);renderPreview();bindViewport();updateCanvasCursor();$('#pattern-list').scrollTop=listScroll;$('#inspector').scrollTop=inspectorScroll;
 }
@@ -95,8 +110,8 @@ function autosave(){if(!storageReady)return;clearTimeout(saveTimer);const versio
 function persistAutosaveNow(){clearTimeout(saveTimer);saveTimer=0;if(!storageReady)return;const version=++autosaveSequence;setSaveState('saving');queueAutosave(clone(doc),version);}
 function toast(key,raw=false){clearTimeout(toastTimer);const el=$('#toast');el.textContent=raw?key:t(key);el.classList.add('show');toastTimer=setTimeout(()=>el.classList.remove('show'),3000);}
 function schedulePreview(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;renderPreview();});}
-function renderPreview(){const start=performance.now(),rgb=active().color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160;$('#artboard').style.setProperty('--checker1',bright?'#424242':'#ffffff');$('#artboard').style.setProperty('--checker2',bright?'#373737':'#f0f0f0');try{$('#artboard').innerHTML=renderSVG(doc,{preview:true,repeat});}catch(e){console.error(e);toast('exportError');return;}const elapsed=performance.now()-start;$('#render-time').textContent=`${Math.round(elapsed)} ms`;$('#dimensions-label').textContent=`${doc.width} × ${doc.height}`;$('#artboard-label').textContent=`${doc.width} × ${doc.height}${repeat===3?' / 3 × 3':''} · ${doc.seamless?t('seamless'):t('single')}`;const alphaStatus=$('#alpha-status'),alphaStatusTitle=t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid');alphaStatus.textContent=t(doc.transparent?'alpha':'solid');alphaStatus.setAttribute('aria-pressed',String(doc.transparent));alphaStatus.setAttribute('aria-label',alphaStatusTitle);alphaStatus.title=alphaStatusTitle;$('#tile-grid').hidden=!(repeat===3&&tileEdges);fitLayout();}
-function fitLayout(){const vp=$('#viewport');if(!vp)return;const rect=vp.getBoundingClientRect(),base=Math.min((rect.width-82)/(doc.width*repeat),(rect.height-76)/(doc.height*repeat));const unit=Math.max(.025,base)*zoom;const art=$('#artboard'),wrap=$('#artboard-wrap');art.style.width=`${doc.width*repeat*unit}px`;art.style.height=`${doc.height*repeat*unit}px`;wrap.style.transform=`translate(calc(-50% + ${pan.x}px),calc(-50% + ${pan.y}px))`;$('#zoom-label').textContent=`${Math.round(unit*100)}%`;if(lastCanvasPoint)updateBrushCursor(lastCanvasPoint);updateConnectGuide();}
+function renderPreview(){const start=performance.now(),rgb=activePattern().color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160;$('#artboard').style.setProperty('--checker1',bright?'#424242':'#ffffff');$('#artboard').style.setProperty('--checker2',bright?'#373737':'#f0f0f0');try{$('#artboard').innerHTML=renderSVG(doc,{preview:true,repeat});}catch(e){console.error(e);toast('exportError');return;}const elapsed=performance.now()-start;$('#render-time').textContent=`${Math.round(elapsed)} ms`;$('#dimensions-label').textContent=`${doc.width} × ${doc.height}`;$('#artboard-label').textContent=`${doc.width} × ${doc.height}${repeat===3?' / 3 × 3':''} · ${doc.seamless?t('seamless'):t('single')}`;const alphaStatus=$('#alpha-status'),alphaStatusTitle=t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid');alphaStatus.textContent=t(doc.transparent?'alpha':'solid');alphaStatus.setAttribute('aria-pressed',String(doc.transparent));alphaStatus.setAttribute('aria-label',alphaStatusTitle);alphaStatus.title=alphaStatusTitle;$('#tile-grid').hidden=!(repeat===3&&tileEdges);fitLayout();}
+function fitLayout(){const vp=$('#viewport');if(!vp)return;const rect=vp.getBoundingClientRect(),base=Math.min((rect.width-82)/(doc.width*repeat),(rect.height-76)/(doc.height*repeat));const unit=Math.max(.025,base)*zoom;const art=$('#artboard'),wrap=$('#artboard-wrap');art.style.width=`${doc.width*repeat*unit}px`;art.style.height=`${doc.height*repeat*unit}px`;wrap.style.transform=`translate(calc(-50% + ${pan.x}px),calc(-50% + ${pan.y}px))`;$('#zoom-label').textContent=`${Math.round(unit*100)}%`;if(lastCanvasPoint)updateBrushCursor(lastCanvasPoint);updateConnectGuide();updateMaskOverlay();}
 function fit(){finishPointer();zoom=1;pan={x:0,y:0};fitLayout();}
 window.addEventListener('resize',fitLayout);
 
@@ -112,10 +127,11 @@ function setField(el,finish){
  const key=el.dataset.key,target=el.dataset.target,obj=target==='doc'?doc:target==='layer'?active():active().params;let v;
  if(el.type==='checkbox')v=el.checked;else if(el.type==='range'||el.type==='number'){if(el.value===''||!Number.isFinite(el.valueAsNumber))return;const step=Number(el.step)||1;v=clamp(Math.round(el.valueAsNumber/step)*step,Number(el.min),Number(el.max));v=Number(v.toFixed(4));}else {v=el.value;if(['color','secondary','background'].includes(key)&&!/^#[0-9a-f]{6}$/i.test(v)){if(finish)el.value=obj[key];return;}if(target==='params'){const c=pattern(active().type).controls.find(c=>c.key===key);const option=c?.options?.find(o=>String(o.value)===v);if(option)v=option.value;}}
  if(pendingBefore===null)pendingBefore=JSON.stringify(doc);connectStart=null;if(target==='params'&&key==='shape')active().customMotif=null;obj[key]=v;
+ if(isImageMaskLayer(active())){for(const output of $$('[data-mask-threshold]'))output.textContent=active().threshold;for(const button of $$('[data-action=mask-invert]'))button.setAttribute('aria-pressed',String(active().invert));}
  $$(`[data-target="${target}"][data-key="${key}"]`).forEach(other=>{if(other!==el){if(other.type==='checkbox')other.checked=v;else other.value=v;}});schedulePreview();if(finish){flush();if(target==='params'&&(el.tagName==='SELECT'||el.type==='checkbox'||key==='diagonals'))renderInspector();if(target==='doc'&&['width','height'].includes(key))fit();}
 }
 
-document.addEventListener('click',async e=>{if(!storageReady)return;const card=e.target.closest('[data-pattern]');if(card){const type=card.dataset.pattern;mutate(()=>{const l=active(),fresh=createLayer(type,l.id);fresh.color=l.color;fresh.secondary=l.secondary;fresh.opacity=l.opacity;doc.layers[doc.layers.indexOf(l)]=fresh;});return;}
+document.addEventListener('click',async e=>{if(!storageReady)return;const card=e.target.closest('[data-pattern]');if(card){const type=card.dataset.pattern;mutate(()=>{const l=activePattern(),fresh=createLayer(type,l.id);fresh.color=l.color;fresh.secondary=l.secondary;fresh.opacity=l.opacity;doc.layers[doc.layers.indexOf(l)]=fresh;selected=fresh.id;lastPatternId=selected;});return;}
  const b=e.target.closest('[data-action]');if(!b||b.tagName==='SELECT')return;const a=b.dataset.action;
  if(a.startsWith('window-')){if(!nativeHost)return;if(a==='window-close'){flush();persistAutosaveNow();await Promise.all([autosaveQueue,presetWriteQueue,shapeWriteQueue]);}nativeHost.postMessage({type:'window',action:a.slice(7)});}
  else if(a==='category'){category=b.dataset.category;$$('.category-tabs button').forEach(el=>el.classList.toggle('active',el===b));renderPatternList();}
@@ -137,20 +153,24 @@ document.addEventListener('click',async e=>{if(!storageReady)return;const card=e
  else if(a==='fit')fit();
  else if(a==='tool-cursor'||a==='tool-hand'){finishPointer();canvasTool=a==='tool-hand'?'hand':'cursor';updateCanvasCursor();}
  else if(a==='focus'){focus=!focus;renderApp();fit();}
- else if(a==='select-layer'){selected=b.dataset.id;connectStart=null;renderApp();}
+ else if(a==='select-layer'){finishPointer();flush();selected=b.dataset.id;if(!isImageMaskLayer(active()))lastPatternId=selected;connectStart=null;renderApp();}
  else if(a==='visibility')mutate(()=>{const l=doc.layers.find(l=>l.id===b.dataset.id);l.visible=!l.visible;});
- else if(a==='add-layer'||a==='duplicate'){if(doc.layers.length>=16){toast('maxLayers');return;}mutate(()=>{const l=a==='duplicate'?clone(active()):createLayer(active().type,uid());l.id=uid();l.color=active().color;l.secondary=active().secondary;doc.layers.push(l);selected=l.id;});}
- else if(a==='delete'){if(doc.layers.length===1){toast('lastLayer');return;}mutate(()=>{doc.layers=doc.layers.filter(l=>l.id!==selected);selected=doc.layers.at(-1).id;});}
+ else if(a==='add-layer'||a==='duplicate'){if(doc.layers.length>=16){toast('maxLayers');return;}mutate(()=>{const source=activePattern(),l=a==='duplicate'?clone(active()):createLayer(source.type,uid());l.id=uid();if(!isImageMaskLayer(l)){l.color=source.color;l.secondary=source.secondary;}doc.layers.push(l);selected=l.id;if(!isImageMaskLayer(l))lastPatternId=l.id;});}
+ else if(a==='delete'){if(!isImageMaskLayer(active())&&doc.layers.filter(l=>!isImageMaskLayer(l)).length===1){toast('lastLayer');return;}mutate(()=>{doc.layers=doc.layers.filter(l=>l.id!==selected);selected=doc.layers.at(-1).id;});}
  else if(a==='layer-up'||a==='layer-down')mutate(()=>{const i=doc.layers.indexOf(active()),j=i+(a==='layer-up'?1:-1);if(j>=0&&j<doc.layers.length)[doc.layers[i],doc.layers[j]]=[doc.layers[j],doc.layers[i]];});
  else if(a==='palette')mutate(()=>{active().color=b.dataset.color;active().secondary=b.dataset.secondary;});
  else if(a==='presets')presetsDialog();
- else if(a==='save-preset')nameDialog('presetName',label(pattern(active().type).name),name=>{const arr=[...savedPresets,{id:uid(),name,document:clone(doc)}].slice(-40);persistPresets(arr).then(okay=>toast(okay?'presetSaved':'saveFailed'));});
+ else if(a==='save-preset')nameDialog('presetName',layerName(active()),name=>{const arr=[...savedPresets,{id:uid(),name,document:clone(doc)}].slice(-40);persistPresets(arr).then(okay=>toast(okay?'presetSaved':'saveFailed'));});
  else if(a==='preset'){const p=allPresets().find(p=>p.id===b.dataset.id);if(!p)return;mutate(()=>{doc=normalizeDocument(clone(p.document));selected=doc.layers[0].id;});closeDialog();fit();}
  else if(a==='remove-preset'){e.stopPropagation();const arr=savedPresets.filter(p=>p.id!==b.dataset.id);if(await persistPresets(arr))presetsDialog();else toast('saveFailed');}
  else if(a==='edit-mode')setEditMode(b.dataset.mode);
  else if(a==='restore-cells')mutate(()=>{active().hiddenCells=[];});
  else if(a==='clear-links')mutate(()=>{active().cellLinks=[];});
- else if(a==='image-cells')imageCellsDialog();
+ else if(a==='add-image-mask'||a==='mask-replace')chooseImageMask(a==='mask-replace'?selected:null);
+ else if(a==='mask-auto-threshold')await resetMaskThreshold();
+ else if(a==='mask-invert')mutate(()=>{active().invert=!active().invert;});
+ else if(a==='mask-rename'){const layer=active();nameDialog('rename',layer.name,name=>{if(doc.layers.includes(layer))mutate(()=>{layer.name=name;});});}
+ else if(a==='mask-reset-transform')mutate(()=>{Object.assign(active(),{fit:'contain',scale:1,rotation:0,offsetX:0,offsetY:0,flipX:false,flipY:false});});
  else if(a==='shape-library')shapeLibraryDialog();
  else if(a==='import-shape'||a==='import-mask'){imageTarget=a==='import-shape'?'customMotif':'mask';$('#file-image').click();}
  else if(a==='use-shape'){const shape=sharedShapes.find(s=>s.id===b.dataset.id);if(shape&&SHAPE_PATTERNS.includes(active().type)){mutate(()=>{active().customMotif=shape.data;});closeDialog();}}
@@ -194,7 +214,7 @@ function updateBrushCursor(point){
 }
 function finishPointer(){
  const state=pointer;pointer=null;if(!state)return;
- if(state.mode==='cell')push(state.before);
+ if(state.mode==='cell'||state.mode==='mask')push(state.before);
  state.viewport.classList.remove('panning');if(state.viewport.hasPointerCapture(state.id))state.viewport.releasePointerCapture(state.id);
 }
 function captureCellCenters(){
@@ -253,9 +273,9 @@ window.addEventListener('keydown',e=>{
  else if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();saveProject();}
  else if(mod&&e.key.toLowerCase()==='o'){e.preventDefault();$('#file-project').click();}
  else if(mod&&e.key.toLowerCase()==='e'){e.preventDefault();exportDialog();}
- else if(e.code==='Space'&&!mod){e.preventDefault();if(pointer?.mode==='cell')finishPointer();space=true;updateCanvasCursor();}
+ else if(e.code==='Space'&&!mod){e.preventDefault();if(pointer&&pointer.mode!=='pan')finishPointer();space=true;updateCanvasCursor();}
  else if(e.key==='Escape'&&connectStart){e.preventDefault();connectStart=null;updateConnectGuide();}
- else if(e.key.toLowerCase()==='f')fit();else if(e.key.toLowerCase()==='r')$('[data-action=random]').click();
+ else if(e.key.toLowerCase()==='f')fit();else if(e.key.toLowerCase()==='r')$('[data-action=random]')?.click();
 });
 window.addEventListener('keyup',e=>{if(e.code==='Space'){space=false;updateCanvasCursor();}});
 window.addEventListener('blur',()=>{finishPointer();space=false;lastCanvasPoint=null;const ring=$('#brush-cursor');if(ring)ring.hidden=true;updateCanvasCursor();});
@@ -267,6 +287,7 @@ function bindViewport(){
   document.activeElement?.blur();
   finishPointer();flush();const common={viewport:vp,id:e.pointerId};
   if(space||canvasTool==='hand'||e.button===1){pointer={...common,mode:'pan',x:e.clientX,y:e.clientY,px:pan.x,py:pan.y};vp.classList.add('panning');}
+  else if(beginMaskGesture(e,common)){/* The selected image moves independently of the artwork. */}
   else if(editableCells()&&e.target.closest('#artboard')){
    const point={x:e.clientX,y:e.clientY};pointer={...common,mode:'cell',editMode,seen:new Set(),before:JSON.stringify(doc),cells:captureCellCenters(),radius:brushSize*canvasUnit()/2,tolerance:Math.max(8,Math.min(24,(active().params.spacing??active().params.cellSize)*canvasUnit()/2)),last:point};editAt(e,true);
   }
@@ -276,82 +297,91 @@ function bindViewport(){
   lastCanvasPoint={clientX:e.clientX,clientY:e.clientY};updateBrushCursor(lastCanvasPoint);updateConnectGuide();
   if(!pointer||pointer.id!==e.pointerId)return;
   if(pointer.mode==='pan'){pan={x:pointer.px+e.clientX-pointer.x,y:pointer.py+e.clientY-pointer.y};fitLayout();}
+  else if(pointer.mode==='mask')dragImageMask(e);
   else editAt(e);
  });
  vp.addEventListener('pointerleave',()=>{lastCanvasPoint=null;$('#brush-cursor').hidden=true;updateConnectGuide();});
  for(const event of ['pointerup','pointercancel','lostpointercapture'])vp.addEventListener(event,e=>{if(pointer?.id===e.pointerId)finishPointer();});
 }
 
-// Read the same SVG geometry used by the editor, independently of zoom or pan.
-function documentCellCenters(document){
- const holder=window.document.createElement('div');holder.style.cssText='position:fixed;left:-100000px;top:0;visibility:hidden;pointer-events:none';
- holder.innerHTML=renderSVG(document,{preview:true});window.document.body.append(holder);
- try{
-  const svg=$('svg',holder);svg.style.width=`${document.width}px`;svg.style.height=`${document.height}px`;
-  return $$('[data-cell]',holder).map(el=>{const m=el.getCTM(),x=Number(el.dataset.cx),y=Number(el.dataset.cy);return{id:el.dataset.cell,x:m.a*x+m.c*y+m.e,y:m.b*x+m.d*y+m.f};});
- }finally{holder.remove();}
+let lastImageAnalysis=null;
+async function analyzeMaskImage(data){
+ if(lastImageAnalysis?.image===data)return lastImageAnalysis;
+ const image=new Image();image.src=data;await image.decode();
+ if(!image.naturalWidth||!image.naturalHeight||image.naturalWidth>8192||image.naturalHeight>8192)throw new Error('Invalid image dimensions');
+ const ratio=Math.min(1,512/Math.max(image.naturalWidth,image.naturalHeight)),canvas=document.createElement('canvas');
+ canvas.width=Math.max(1,Math.round(image.naturalWidth*ratio));canvas.height=Math.max(1,Math.round(image.naturalHeight*ratio));
+ const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0,canvas.width,canvas.height);
+ const threshold=autoThreshold(grayscaleImage(ctx.getImageData(0,0,canvas.width,canvas.height)));
+ lastImageAnalysis={image:data,imageWidth:image.naturalWidth,imageHeight:image.naturalHeight,threshold};
+ return lastImageAnalysis;
 }
-function imageCellsDialog(){
- if(!['dots','polygons'].includes(active().type))return;
- finishPointer();flush();connectStart=null;updateConnectGuide();
- const originalDoc=doc,layerId=selected,previewDoc=clone(doc);previewDoc.layers=[clone(active())];previewDoc.layers[0].visible=true;
- const cells=documentCellCenters(previewDoc);
- const d=dialog(`<div class="eyebrow">C-TextureMaker / Image to cells</div><h2>${esc(t('imageCells'))}</h2><p class="intro">${esc(t('imageCellsIntro'))}</p><div class="image-upload-row"><button class="button" id="choose-cell-image">${icon('plus')}${esc(t('chooseImage'))}</button><span id="cell-image-name" class="helper">${esc(t('imageCellsFormats'))}</span><input id="file-cell-image" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden></div><div class="image-cell-previews"><section><div class="image-preview-heading"><button class="text-btn" data-source-view="original">${esc(t('sourceImage'))}</button><button class="text-btn active" data-source-view="binary">${esc(t('binaryImage'))}</button></div><div class="image-preview-box"><canvas id="image-binary-preview" hidden></canvas><span class="helper image-placeholder">${esc(t('imageCellsReady'))}</span></div></section><section><div class="image-preview-heading">${esc(t('cellResult'))}<span id="image-cell-count" class="mono"></span></div><div class="image-preview-box image-result" id="image-cell-result"><span class="helper image-placeholder">${esc(t('imageCellsReady'))}</span></div></section></div><fieldset id="image-cell-settings" disabled><div class="image-threshold-row"><label for="image-threshold">${esc(t('threshold'))}</label><input id="image-threshold-number" type="number" aria-label="${esc(t('threshold'))}" min="0" max="255" step="1" value="128"><button class="button" id="auto-image-threshold">${esc(t('autoThreshold'))}</button></div><div class="field"><input id="image-threshold" aria-label="${esc(t('threshold'))}" type="range" min="0" max="255" step="1" value="128"></div><div class="image-fit-row"><label class="toggle-row"><span>${esc(t('invertImage'))}</span><input id="invert-cell-image" type="checkbox"></label><label class="image-fit-label">${esc(t('imageFit'))}<select id="cell-image-fit"><option value="contain">${esc(t('containImage'))}</option><option value="cover">${esc(t('coverImage'))}</option></select></label></div></fieldset><p class="helper">${esc(t('imageCellsHint'))}</p><div class="modal-footer"><button class="button" data-action="close-dialog">${esc(t('cancel'))}</button><button class="button primary" id="apply-image-cells" disabled>${esc(t('applyImageCells'))}</button></div>`,'image-cells-modal');
- const scale=Math.min(1,1536/Math.max(doc.width,doc.height)),w=Math.max(1,Math.round(doc.width*scale)),h=Math.max(1,Math.round(doc.height*scale));
- const source=document.createElement('canvas');source.width=w;source.height=h;
- const sourceContext=source.getContext('2d',{willReadFrequently:true}),canvas=$('#image-binary-preview',d);canvas.width=w;canvas.height=h;
- const rgb=previewDoc.layers[0].color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160,resultBox=$('#image-cell-result',d);
- resultBox.style.setProperty('--checker1',bright?'#424242':'#ffffff');resultBox.style.setProperty('--checker2',bright?'#373737':'#f0f0f0');
- let image=null,sourceUrl=null,field=null,result=null,view='binary',job=0,previewFrame=0;
- const showPreview=()=>{
-  if(!field||!d.open)return;
-  const threshold=Number($('#image-threshold',d).value),invert=$('#invert-cell-image',d).checked;
-  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,w,h);
-  if(view==='original')ctx.drawImage(source,0,0);else ctx.putImageData(new ImageData(binaryPreview(field,{threshold,invert}),w,h),0,0);
-  result=classifyCells(field,cells,{width:previewDoc.width,height:previewDoc.height,threshold,invert,seamless:previewDoc.seamless});
-  previewDoc.layers[0].hiddenCells=[...result.hiddenCells];
-  $('#image-cell-result',d).innerHTML=renderSVG(previewDoc);
-  $('#image-cell-count',d).textContent=`${t('cellsKept')} ${result.visibleCount} / ${result.totalCount}`;
- };
- const schedule=()=>{if(!previewFrame)previewFrame=requestAnimationFrame(()=>{previewFrame=0;showPreview();});};
- const prepare=()=>{
-  if(!image)return;
-  sourceContext.clearRect(0,0,w,h);const fit=$('#cell-image-fit',d).value==='cover'?Math.max(w/image.naturalWidth,h/image.naturalHeight):Math.min(w/image.naturalWidth,h/image.naturalHeight);
-  const iw=image.naturalWidth*fit,ih=image.naturalHeight*fit;sourceContext.drawImage(image,(w-iw)/2,(h-ih)/2,iw,ih);
-  field=grayscaleImage(sourceContext.getImageData(0,0,w,h));
-  const value=autoThreshold(field);$('#image-threshold',d).value=value;$('#image-threshold-number',d).value=value;showPreview();
- };
- const release=()=>{job++;cancelAnimationFrame(previewFrame);if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceUrl=null;image=null;};
- d.addEventListener('close',release,{once:true});
- $('#choose-cell-image',d).onclick=()=>$('#file-cell-image',d).click();
- $('#file-cell-image',d).onchange=async e=>{
-  const file=e.target.files[0];e.target.value='';if(!file)return;const ticket=++job;
-  $('#apply-image-cells',d).disabled=true;$('#image-cell-settings',d).disabled=true;$('#cell-image-name',d).textContent=t('imageCellsLoading');
-  let url=null;
-  try{
-   const svg=file.type==='image/svg+xml'||/\.svg$/i.test(file.name);
-   if(file.size>16*1024*1024||(!svg&&!/^image\/(png|jpeg|webp)$/.test(file.type)&&! /\.(png|jpe?g|webp)$/i.test(file.name)))throw new Error('Invalid image file');
-   url=svg?await importShapeFile(file):URL.createObjectURL(file);
-   const loaded=new Image();loaded.src=url;await loaded.decode();
-   if(!loaded.naturalWidth||!loaded.naturalHeight||loaded.naturalWidth>8192||loaded.naturalHeight>8192)throw new Error('Invalid image dimensions');
-   if(ticket!==job||!d.open)return;
-   if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceUrl=url;url=null;image=loaded;prepare();
-   canvas.hidden=false;$('.image-placeholder',d)?.remove();$('#cell-image-name',d).textContent=file.name;$('#image-cell-settings',d).disabled=false;$('#apply-image-cells',d).disabled=false;
-  }catch{
-   if(ticket===job&&d.open){$('#cell-image-name',d).textContent=t('imageCellsInvalid');$('#image-cell-settings',d).disabled=!field;$('#apply-image-cells',d).disabled=!field;}
-  }finally{if(url?.startsWith('blob:'))URL.revokeObjectURL(url);}
- };
- for(const input of [$('#image-threshold',d),$('#image-threshold-number',d)])input.oninput=()=>{
-  if(input.value===''||!Number.isFinite(input.valueAsNumber))return;
-  const value=Math.round(clamp(input.valueAsNumber,0,255));$('#image-threshold',d).value=value;$('#image-threshold-number',d).value=value;schedule();
- };
- $('#auto-image-threshold',d).onclick=()=>{if(field){const value=autoThreshold(field);$('#image-threshold',d).value=value;$('#image-threshold-number',d).value=value;schedule();}};
- $('#invert-cell-image',d).onchange=schedule;$('#cell-image-fit',d).onchange=prepare;
- $$('[data-source-view]',d).forEach(button=>button.onclick=()=>{view=button.dataset.sourceView;$$('[data-source-view]',d).forEach(b=>b.classList.toggle('active',b===button));schedule();});
- $('#apply-image-cells',d).onclick=()=>{
-  if(!field||doc!==originalDoc)return;showPreview();const layer=doc.layers.find(l=>l.id===layerId);if(!layer||!result)return;
-  const hidden=[...previewDoc.layers[0].hiddenCells];closeDialog();mutate(()=>{layer.hiddenCells=hidden;});toast('imageCellsApplied');
- };
+async function readMaskImage(file){
+ if(file.size>16*1024*1024)throw new Error('Image too large');
+ if(file.type==='image/svg+xml'||/\.svg$/i.test(file.name))return importShapeFile(file);
+ const bytes=new Uint8Array(await file.arrayBuffer()),head=[...bytes.subarray(0,12)];
+ const mime=head.slice(0,8).join(',')==='137,80,78,71,13,10,26,10'?'image/png':head[0]===255&&head[1]===216&&head[2]===255?'image/jpeg':String.fromCharCode(...head.slice(0,4))==='RIFF'&&String.fromCharCode(...head.slice(8,12))==='WEBP'?'image/webp':null;
+ if(!mime)throw new Error('Invalid image format');
+ return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(new Blob([bytes],{type:mime}));});
+}
+function chooseImageMask(id=null){
+ if(!id&&doc.layers.length>=16){toast('maxLayers');return;}
+ maskImportTarget=id;maskImportDocument=doc;$('#file-image-mask').click();
+}
+$('#file-image-mask').addEventListener('cancel',()=>{maskImportTarget=null;maskImportDocument=null;});
+$('#file-image-mask').addEventListener('change',async e=>{
+ const file=e.target.files[0];e.target.value='';
+ const target=maskImportTarget,originalDoc=maskImportDocument??doc,ticket=++maskImportSequence;
+ maskImportTarget=null;maskImportDocument=null;if(!file||!storageReady)return;
+ toast('maskLoading');
+ try{
+  const image=await readMaskImage(file),analysis=await analyzeMaskImage(image);
+  if(ticket!==maskImportSequence||doc!==originalDoc)return;
+  const existing=target?doc.layers.find(l=>l.id===target&&isImageMaskLayer(l)):null;
+  if(target&&!existing)return;if(!target&&doc.layers.length>=16){toast('maxLayers');return;}
+  const name=file.name.replace(/\.[^.]+$/,'').replace(/[\u0000-\u001f\u007f-\u009f]/g,'').trim().slice(0,80)||t('imageMask');
+  const layer=existing?{...existing,image,imageWidth:analysis.imageWidth,imageHeight:analysis.imageHeight,threshold:analysis.threshold}:createImageMaskLayer({id:uid(),name,image,imageWidth:analysis.imageWidth,imageHeight:analysis.imageHeight});
+  layer.threshold=analysis.threshold;
+  const layers=existing?doc.layers.map(l=>l===existing?layer:l):[...doc.layers,layer],next=normalizeDocument({...doc,layers});
+  if(new Blob([JSON.stringify(next)]).size>MAX_PROJECT_BYTES){toast('projectTooLarge');return;}
+  lastPatternId=activePattern().id;
+  mutate(()=>{doc=next;selected=layer.id;});toast('maskAdded');
+ }catch(error){console.error(error);toast('maskInvalid');}
+});
+async function resetMaskThreshold(){
+ const layer=active();if(!isImageMaskLayer(layer))return;
+ const image=layer.image,originalDoc=doc,buttons=$$('[data-action=mask-auto-threshold]');buttons.forEach(b=>b.disabled=true);
+ try{
+  const analysis=await analyzeMaskImage(image);
+  if(doc===originalDoc&&doc.layers.includes(layer)&&layer.image===image)mutate(()=>{layer.threshold=analysis.threshold;});
+ }catch{toast('maskInvalid');}
+ finally{buttons.forEach(b=>b.disabled=false);}
+}
+function updateMaskOverlay(){
+ const overlay=$('#mask-overlay');if(!overlay)return;
+ const layer=active(),show=isImageMaskLayer(layer)&&repeat===1;overlay.toggleAttribute('hidden',!show);
+ if(!show){overlay.innerHTML='';return;}
+ const g=imageMaskGeometry(layer,doc),unit=canvasUnit(),r=5/unit,stem=26/unit;
+ overlay.setAttribute('viewBox',`0 0 ${doc.width} ${doc.height}`);
+ overlay.innerHTML=`<g transform="${g.transform}"><rect class="mask-outline" data-mask-action="move" x="${-g.width/2}" y="${-g.height/2}" width="${g.width}" height="${g.height}" vector-effect="non-scaling-stroke"/><line class="mask-stem" x1="0" y1="${-g.height/2}" x2="0" y2="${-g.height/2-stem}" vector-effect="non-scaling-stroke"/><circle class="mask-handle" data-mask-action="rotate" aria-label="${esc(t('rotation'))}" cx="0" cy="${-g.height/2-stem}" r="${r}" vector-effect="non-scaling-stroke"/>${[[-1,-1],[1,-1],[1,1],[-1,1]].map(([x,y])=>`<rect class="mask-handle" data-mask-action="resize" aria-label="${esc(t('scale'))}" x="${x*g.width/2-r}" y="${y*g.height/2-r}" width="${2*r}" height="${2*r}" vector-effect="non-scaling-stroke"/>`).join('')}</g>`;
+}
+function beginMaskGesture(e,common){
+ if(!isImageMaskLayer(active())||repeat!==1)return false;
+ const handle=e.target.closest('[data-mask-action]');if(!handle)return false;
+ const layer=active(),rect=$('#artboard').getBoundingClientRect(),unit=canvasUnit(),point={x:(e.clientX-rect.left)/unit,y:(e.clientY-rect.top)/unit},geometry=imageMaskGeometry(layer,doc);
+ pointer={...common,mode:'mask',action:handle.dataset.maskAction,before:JSON.stringify(doc),layer,initial:{scale:layer.scale,rotation:layer.rotation,offsetX:layer.offsetX,offsetY:layer.offsetY},point,geometry,unit,rect};
+ return true;
+}
+function dragImageMask(e){
+ const {layer,initial,point,geometry,unit,rect,action}=pointer,current={x:(e.clientX-rect.left)/unit,y:(e.clientY-rect.top)/unit};
+ if(action==='move'){layer.offsetX=clamp(Math.round(initial.offsetX+current.x-point.x),-32768,32768);layer.offsetY=clamp(Math.round(initial.offsetY+current.y-point.y),-32768,32768);}
+ else if(action==='resize'){const before=Math.hypot(point.x-geometry.cx,point.y-geometry.cy),after=Math.hypot(current.x-geometry.cx,current.y-geometry.cy);layer.scale=Number(clamp(initial.scale*after/Math.max(.01,before),.05,8).toFixed(4));}
+ else{const start=Math.atan2(point.y-geometry.cy,point.x-geometry.cx),now=Math.atan2(current.y-geometry.cy,current.x-geometry.cx),angle=initial.rotation+(now-start)*180/Math.PI;layer.rotation=Math.round(((angle+180)%360+360)%360-180);}
+ for(const key of ['scale','rotation','offsetX','offsetY'])for(const input of $$(`[data-target=layer][data-key=${key}]`)){
+  if(key.startsWith('offset')){input.min=-Math.max(key==='offsetX'?doc.width:doc.height,Math.abs(layer[key]));input.max=-Number(input.min);}
+  input.value=layer[key];
+ }
+ schedulePreview();
 }
 
 function dialog(content,cls=''){closeDialog();$('#dialog-root').innerHTML=`<dialog class="${cls}">${ib('close-dialog','close','close')}<div class="modal-content">${content}</div></dialog>`;const d=$('dialog');$('.icon-btn',d).classList.add('modal-close');d.showModal();d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});d.addEventListener('close',()=>d.remove());return d;}
@@ -384,7 +414,7 @@ async function saveFile(name,mime,blob){if(window.chrome?.webview){const bytes=n
 window.chrome?.webview?.addEventListener('message',e=>{const r=e.data;if(r?.type==='window-state'){updateWindowState(r.maximized);return;}if(r?.type!=='save-result')return;const task=nativeSaves.get(r.id);if(!task)return;clearTimeout(task.timer);nativeSaves.delete(r.id);if(r.cancelled)task.resolve(false);else if(r.ok)task.resolve(true);else task.reject(new Error(r.error||'Save failed'));});
 async function saveProject(){flush();try{const blob=new Blob([JSON.stringify(doc,null,2)],{type:'application/json'});if(blob.size>MAX_PROJECT_BYTES){toast('projectTooLarge');return;}const result=await saveFile(safeName(doc.name)+'.ctm','application/json',blob);if(result)toast('saved');}catch{toast('saveFailed');}}
 $('#file-project').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!storageReady||!f)return;if(f.size>MAX_PROJECT_BYTES){toast('projectTooLarge');return;}try{const parsed=normalizeDocument(JSON.parse(await f.text()));mutate(()=>{doc=parsed;selected=doc.layers[0].id;});fit();toast('imported');}catch{toast('invalidProject');}});
-function exportDialog(){let format='svg';const d=dialog(`<div class="eyebrow">C-TextureMaker / Export</div><h2>${esc(t('exportTitle'))}</h2><p class="intro">${esc(t('exportSub'))}</p><label class="form-label">${esc(t('format'))}</label><div class="format-switch"><button class="format-option active" data-format="svg"><b>SVG</b><small>${esc(t('vector'))}</small></button><button class="format-option" data-format="png"><b>PNG</b><small>RGBA · 8 bit</small></button></div><p class="helper format-note" id="format-note">${esc(t('svgNote'))}</p><label class="form-label" for="export-name">${esc(t('filename'))}</label><input class="text-input" id="export-name" maxlength="80" value="${esc(safeName(doc.name))}"><div id="png-scale"><label class="form-label" for="export-scale">${esc(t('resolution'))}</label><select id="export-scale" class="select-wide" disabled><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></div><div style="height:18px"></div><label class="toggle-row"><span>${esc(t('transparent'))}</span><input id="export-alpha" type="checkbox" ${doc.transparent?'checked':''}></label><div class="export-meta"><span id="export-size" class="mono">${doc.width} × ${doc.height}</span><span>${esc(t(doc.seamless?'seamless':'single'))}</span></div>${doc.layers.some(l=>l.customMotif||l.mask)?`<p class="helper">${esc(t('rasterNote'))}</p>`:''}<div class="modal-footer"><button class="button" data-action="close-dialog">${esc(t('cancel'))}</button><button class="button primary" id="do-export">${icon('export')}${esc(t('download'))}</button></div>`);
+function exportDialog(){let format='svg';const d=dialog(`<div class="eyebrow">C-TextureMaker / Export</div><h2>${esc(t('exportTitle'))}</h2><p class="intro">${esc(t('exportSub'))}</p><label class="form-label">${esc(t('format'))}</label><div class="format-switch"><button class="format-option active" data-format="svg"><b>SVG</b><small>${esc(t('vector'))}</small></button><button class="format-option" data-format="png"><b>PNG</b><small>RGBA · 8 bit</small></button></div><p class="helper format-note" id="format-note">${esc(t('svgNote'))}</p><label class="form-label" for="export-name">${esc(t('filename'))}</label><input class="text-input" id="export-name" maxlength="80" value="${esc(safeName(doc.name))}"><div id="png-scale"><label class="form-label" for="export-scale">${esc(t('resolution'))}</label><select id="export-scale" class="select-wide" disabled><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></div><div style="height:18px"></div><label class="toggle-row"><span>${esc(t('transparent'))}</span><input id="export-alpha" type="checkbox" ${doc.transparent?'checked':''}></label><div class="export-meta"><span id="export-size" class="mono">${doc.width} × ${doc.height}</span><span>${esc(t(doc.seamless?'seamless':'single'))}</span></div>${doc.layers.some(l=>l.customMotif||l.mask||isImageMaskLayer(l))?`<p class="helper">${esc(t('rasterNote'))}</p>`:''}<div class="modal-footer"><button class="button" data-action="close-dialog">${esc(t('cancel'))}</button><button class="button primary" id="do-export">${icon('export')}${esc(t('download'))}</button></div>`);
  const update=()=>{const mult=format==='png'?Number($('#export-scale',d).value):1;$('#export-size',d).textContent=`${doc.width*mult} × ${doc.height*mult}`;};$$('[data-format]',d).forEach(b=>b.onclick=()=>{format=b.dataset.format;$$('[data-format]',d).forEach(x=>x.classList.toggle('active',x===b));$('#export-scale',d).disabled=format!=='png';$('#format-note',d).textContent=t(format==='svg'?'svgNote':'pngNote');update();});$('#export-scale',d).onchange=update;
  $('#do-export',d).onclick=async()=>{flush();const mult=format==='png'?Number($('#export-scale',d).value):1,w=doc.width*mult,h=doc.height*mult;if(format==='png'&&(w>8192||h>8192||w*h>33554432)){toast('tooLarge');return;}const button=$('#do-export',d);button.disabled=true;button.textContent=t('exporting');try{const output=clone(doc);output.transparent=$('#export-alpha',d).checked;const svg=renderSVG(output);let blob;if(format==='svg')blob=new Blob([svg],{type:'image/svg+xml;charset=utf-8'});else blob=await rasterize(svg,w,h);const name=safeName($('#export-name',d).value)+'.'+format;if(await saveFile(name,blob.type,blob)){closeDialog();toast('exported');}}catch(err){console.error(err);toast('exportError');}finally{if(button.isConnected){button.disabled=false;button.innerHTML=icon('export')+esc(t('download'));}}};
 }

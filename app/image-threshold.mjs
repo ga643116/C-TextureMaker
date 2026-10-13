@@ -30,44 +30,6 @@ function validateField(field) {
   return count;
 }
 
-function validateThreshold(threshold) {
-  if (!Number.isInteger(threshold) || threshold < 0 || threshold > 255) {
-    throw new TypeError('threshold must be an integer from 0 to 255');
-  }
-  return threshold;
-}
-
-function validateBoolean(value, name) {
-  if (typeof value !== 'boolean') throw new TypeError(`${name} must be a boolean`);
-  return value;
-}
-
-function clampIndex(index, size) {
-  return Math.min(size - 1, Math.max(0, index));
-}
-
-function wrapIndex(index, size) {
-  return ((index % size) + size) % size;
-}
-
-function sampleChannel(data, width, height, x, y, seamless) {
-  const left = Math.floor(x);
-  const top = Math.floor(y);
-  const fx = x - left;
-  const fy = y - top;
-  const x0 = seamless ? wrapIndex(left, width) : clampIndex(left, width);
-  const x1 = seamless ? wrapIndex(left + 1, width) : clampIndex(left + 1, width);
-  const y0 = seamless ? wrapIndex(top, height) : clampIndex(top, height);
-  const y1 = seamless ? wrapIndex(top + 1, height) : clampIndex(top + 1, height);
-  const topValue = data[y0 * width + x0] * (1 - fx) + data[y0 * width + x1] * fx;
-  const bottomValue = data[y1 * width + x0] * (1 - fx) + data[y1 * width + x1] * fx;
-  return topValue * (1 - fy) + bottomValue * fy;
-}
-
-function wrapped(value, period) {
-  return ((value % period) + period) % period;
-}
-
 export function grayscaleImage({ width, height, data }) {
   const count = pixelCount(width, height);
   if (!(data instanceof Uint8ClampedArray) || data.length !== count * 4) {
@@ -148,66 +110,4 @@ export function autoThreshold(field) {
   }
   considerRun(runStart, 254);
   return Math.round((bestStart + bestEnd) / 2);
-}
-
-export function binaryPreview(field, { threshold = autoThreshold(field), invert = false } = {}) {
-  const count = validateField(field);
-  validateThreshold(threshold);
-  validateBoolean(invert, 'invert');
-  const preview = new Uint8ClampedArray(count * 4);
-  for (let pixel = 0, offset = 0; pixel < count; pixel++, offset += 4) {
-    const retained = field.alpha[pixel] > 0 && (invert ? field.gray[pixel] > threshold : field.gray[pixel] <= threshold);
-    const value = retained ? 0 : 255;
-    preview[offset] = value;
-    preview[offset + 1] = value;
-    preview[offset + 2] = value;
-    preview[offset + 3] = field.alpha[pixel];
-  }
-  return preview;
-}
-
-export function classifyCells(field, cells, { width, height, threshold = autoThreshold(field), invert = false, seamless = false } = {}) {
-  validateField(field);
-  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-    throw new TypeError('width and height must be positive finite numbers');
-  }
-  validateThreshold(threshold);
-  validateBoolean(invert, 'invert');
-  validateBoolean(seamless, 'seamless');
-  if (!Array.isArray(cells)) throw new TypeError('cells must be an array');
-
-  for (const cell of cells) {
-    if (!cell || typeof cell !== 'object' || (typeof cell.id !== 'string' && typeof cell.id !== 'number') ||
-        (typeof cell.id === 'number' && !Number.isFinite(cell.id)) ||
-        !Number.isFinite(cell.x) || !Number.isFinite(cell.y)) {
-      throw new TypeError('each cell must have a finite string or number id and finite x and y coordinates');
-    }
-  }
-
-  const hiddenCells = [];
-  const seen = new Set();
-  let visibleCount = 0;
-  let totalCount = 0;
-  for (const cell of cells) {
-    let x = cell.x;
-    let y = cell.y;
-    if (seamless) {
-      x = wrapped(x, width);
-      y = wrapped(y, height);
-    } else if (x < 0 || x >= width || y < 0 || y >= height) {
-      continue;
-    }
-    if (seen.has(cell.id)) continue;
-    seen.add(cell.id);
-    totalCount++;
-
-    const sampleX = x * field.width / width - 0.5;
-    const sampleY = y * field.height / height - 0.5;
-    const alpha = sampleChannel(field.alpha, field.width, field.height, sampleX, sampleY, seamless);
-    const gray = sampleChannel(field.gray, field.width, field.height, sampleX, sampleY, seamless);
-    const retained = alpha > 0 && (invert ? gray > threshold : gray <= threshold);
-    if (retained) visibleCount++;
-    else hiddenCells.push(cell.id);
-  }
-  return { hiddenCells, visibleCount, totalCount };
 }
