@@ -1,4 +1,4 @@
-C-TextureMaker 1.1.0 source
+C-TextureMaker 1.2.0 source
 
 Source repository:
 https://github.com/ga643116/C-TextureMaker/tree/main

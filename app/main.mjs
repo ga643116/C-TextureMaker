@@ -7,8 +7,9 @@ import {PATTERNS,SHAPE_PATTERNS,createDocument,createLayer,normalizeDocument,ren
 import {translator,localized} from './i18n.mjs';
 import {generate} from './vendor/ui-generation.js';
 import {persistentStorage} from './storage.mjs';
-import {normalizeShapeLibrary,addShape,removeShape,importShapeFile} from './shape-library.mjs';
+import {normalizeShapeLibrary,addShape,removeShape,renameShape,importShapeFile} from './shape-library.mjs';
 import {strokeHits,nearestCell} from './cell-brush.mjs';
+import {grayscaleImage,autoThreshold,binaryPreview,classifyCells} from './image-cells.mjs';
 
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const clone=v=>JSON.parse(JSON.stringify(v));
@@ -33,6 +34,7 @@ const active=()=>doc.layers.find(l=>l.id===selected)??doc.layers[0];
 const pattern=id=>PATTERNS.find(p=>p.id===id)??PATTERNS[0];
 const label=x=>localized(x,lang);
 const glyphs={
+ pencil:'<path d="m10.5 1.5 4 4-8.5 8.5-5 1 1-5zM8.5 3.5l4 4"/>',
  cursor:'<path d="M3 1.5 13 8l-4.6 1.1L6 13.5zM8.4 9.4l2.2 4.1"/>',hand:'<path d="M5 8V3.5a1 1 0 0 1 2 0V7 2.5a1 1 0 0 1 2 0V7 3.5a1 1 0 0 1 2 0V8 5a1 1 0 0 1 2 0v5c0 3-2 5-5 5-2 0-3-1-4-3L2 8.5a1.2 1.2 0 0 1 1.8-1.4L5 8z"/>',
  windowMaximize:'<rect x="3" y="3" width="10" height="10" rx=".5"/>',windowRestore:'<path d="M5 3V1h10v10h-2M1 5h10v10H1z"/>',
  search:'<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/>',plus:'<path d="M8 2v12M2 8h12"/>',minus:'<path d="M3 8h10"/>',
@@ -65,19 +67,19 @@ function geometryFields(l,p){
  const groups=[['mainGrid',['cellSize','strokeWidth','lineStyle','dashLength','dashGap']],['diagonalLines',['diagonals','diagonalWidth','diagonalStyle','diagonalDashLength','diagonalDashGap']],['gapControls',['cornerTrim','centerTrim']],['gridDecorations',['junction','junctionSize','junctionWidth','cornerShape','cornerSize','cornerInset','dots','dotSize','dotSpacing','hatch','hatchWidth','hatchSpacing']]];
  return groups.map(([key,keys])=>`<section class="parameter-group" data-parameter-group="${key}"><h2>${esc(t(key))}</h2>${keys.map(key=>p.controls.find(c=>c.key===key)).filter(Boolean).map(c=>renderControl(c,l,p)).join('')}${key==='gapControls'?`<p class="helper">${esc(t('gapHint'))}</p>`:''}</section>`).join('');
 }
-function brushControls(){return ['paint','erase'].includes(editMode)?numeric('brushSize',t('brushSize'),brushSize,4,4096,4,'editor'):'';}
-function cellToolbar(){return `<span>${esc(t('editCells'))}</span><select data-action="edit-mode-select" aria-label="${esc(t('editCells'))}">${['toggle','erase','paint','connect'].map(m=>`<option value="${m}" ${m===editMode?'selected':''}>${esc(t(m))}</option>`).join('')}</select>${['paint','erase'].includes(editMode)?`<label class="brush-inline">${esc(t('brushSize'))}<input type="number" data-target="editor" data-key="brushSize" aria-label="${esc(t('brushSize'))}" min="4" max="4096" step="4" value="${brushSize}"></label>`:''}`;}
-function setEditMode(mode){finishPointer();editMode=mode;connectStart=null;renderInspector();const bar=$('.cell-edit-bar');if(bar)bar.innerHTML=cellToolbar();updateCanvasCursor();}
+function brushControls(){return ['paint','erase'].includes(editMode)?numeric('brushSize',t('brushSize'),brushSize,4,4096,4,'editor'):editMode==='connect'?numeric('linkWidth',t('linkWidth'),active().linkWidth,.25,128,.25,'layer'):'';}
+function cellToolbar(){return `<span>${esc(t('editCells'))}</span><select data-action="edit-mode-select" aria-label="${esc(t('editCells'))}">${['toggle','erase','paint','connect'].map(m=>`<option value="${m}" ${m===editMode?'selected':''}>${esc(t(m))}</option>`).join('')}</select>${editMode==='connect'?`<span class="connect-status">${esc(t(connectStart?'connectSecond':'connectFirst'))}</span>`:''}${['paint','erase'].includes(editMode)?`<label class="brush-inline">${esc(t('brushSize'))}<input type="number" data-target="editor" data-key="brushSize" aria-label="${esc(t('brushSize'))}" min="4" max="4096" step="4" value="${brushSize}"></label>`:''}`;}
+function setEditMode(mode){finishPointer();editMode=mode;connectStart=null;renderInspector();const bar=$('.cell-edit-bar');if(bar)bar.innerHTML=cellToolbar();updateCanvasCursor();updateConnectGuide();}
 function renderInspector(savedSections=null){const l=active(),p=pattern(l.type);const openSections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
  const fields=geometryFields(l,p);
  const palettes=[['#34392e','#97a184'],['#151515','#868686'],['#f0ebdd','#9b927e'],['#e3edcd','#839968'],['#66789a','#b7c5df'],['#c16a46','#e6ac83'],['#916b80','#d9b2c7']];
- let extra='';if(['dots','polygons'].includes(l.type))extra=details('cells',t('editCells'),`<div class="cell-modes">${['toggle','erase','paint','connect'].map(m=>`<button data-action="edit-mode" data-mode="${m}" class="${editMode===m?'active':''}">${esc(t(m))}</button>`).join('')}</div>${brushControls()}<p class="helper">${esc(t('cellHint'))}</p><button class="button" data-action="restore-cells">${esc(t('restoreCells'))}</button>`);
+ let extra='';if(['dots','polygons'].includes(l.type))extra=details('cells',t('editCells'),`<div class="cell-modes">${['toggle','erase','paint','connect'].map(m=>`<button data-action="edit-mode" data-mode="${m}" class="${editMode===m?'active':''}">${esc(t(m))}</button>`).join('')}</div>${brushControls()}<p class="helper">${esc(t(editMode==='connect'?'connectHint':'cellHint'))}</p><div class="cell-extra-actions"><button class="button primary" data-action="image-cells">${icon('grid')}${esc(t('imageCells'))}</button><button class="button" data-action="restore-cells">${esc(t('restoreCells'))}</button><button class="button" data-action="clear-links" ${l.cellLinks?.length?'':'disabled'}>${esc(t('clearLinks'))}</button></div>`);
  if(l.type==='halftone')extra=details('import',t('uploadMask'),`<div class="import-buttons"><button class="button" data-action="import-mask">${icon('plus')}${esc(t('uploadMask'))}</button>${l.mask?`<button class="button" data-action="clear-mask">${icon('close')}${esc(t('clearMask'))}</button>`:''}</div><p class="helper">${esc(t('importHint'))}</p>`,false);
- $('#inspector').innerHTML=`<div class="inspector-head"><div class="eyebrow">${esc(t('properties'))}<span class="mono" style="float:right">${String(PATTERNS.indexOf(p)+1).padStart(2,'0')} / 15</span></div><h1>${esc(label(p.name))}</h1><p>${esc(label(p.description))}</p><div class="actions"><button class="button" data-action="random">${icon('random')}${esc(t('random'))}</button>${ib('reset','reset','reset')}${ib('save-preset','star','savePreset')}</div></div>${details('geometry',t('geometry'),fields+(l.type==='barcode'?`<p class="helper">${esc(t('decorative'))}</p>`:''))}${extra}${details('appearance',t('appearance'),`<div class="field-pair">${colorField('color',t('color'),l.color)}${colorField('secondary',t('secondary'),l.secondary)}</div>${numeric('opacity',t('opacity'),l.opacity,0,1,.01,'layer')}<div class="swatches">${palettes.map(([a,b])=>`<button class="swatch" data-action="palette" data-color="${a}" data-secondary="${b}" style="background:${a};--swatch-b:${b}" aria-label="${a} / ${b}" title="${a} / ${b}"></button>`).join('')}</div>`)}${details('transform',t('transform'),numeric('rotation',t('rotation'),l.rotation,-180,180,1,'layer')+numeric('scale',t('scale'),l.scale,.1,2,.01,'layer')+numeric('offsetX',t('offsetX'),l.offsetX,-doc.width,doc.width,1,'layer')+numeric('offsetY',t('offsetY'),l.offsetY,-doc.height,doc.height,1,'layer'),false)}${details('canvas',t('canvas'),`<div class="field"><label class="field-title" for="size-preset">${esc(t('proportion'))}</label><select class="select-wide" id="size-preset" data-action="size-preset"><option value="custom">${doc.width} × ${doc.height}</option><option value="512,512">512 × 512</option><option value="1024,1024">1024 × 1024</option><option value="2048,2048">2048 × 2048</option><option value="1920,1080">1920 × 1080</option><option value="1080,1920">1080 × 1920</option></select></div><div class="dimensions"><label>${esc(t('width'))}<input type="number" min="128" max="4096" step="1" data-target="doc" data-key="width" value="${doc.width}"></label><label>${esc(t('height'))}<input type="number" min="128" max="4096" step="1" data-target="doc" data-key="height" value="${doc.height}"></label></div><div style="height:15px"></div>${checkbox('transparent',t('transparent'),doc.transparent)}${colorField('background',t('background'),doc.background,'doc')}${checkbox('seamless',t('seamless'),doc.seamless)}<p class="helper">${esc(t('seamlessHint'))}</p>${numeric('seed',t('seed'),doc.seed,1,999999,1,'doc')}`,true)}`;
+ $('#inspector').innerHTML=`<div class="inspector-head"><div class="eyebrow">${esc(t('properties'))}<span class="mono" style="float:right">${String(PATTERNS.indexOf(p)+1).padStart(2,'0')} / 15</span></div><h1>${esc(label(p.name))}</h1><p>${esc(label(p.description))}</p><div class="actions"><button class="button" data-action="random">${icon('random')}${esc(t('random'))}</button>${ib('reset','reset','reset')}${ib('save-preset','star','savePreset')}</div></div>${details('geometry',t('geometry'),fields+(l.type==='barcode'?`<p class="helper">${esc(t('decorative'))}</p>`:''))}${extra}${details('appearance',t('appearance'),`<div class="field-pair">${colorField('color',t('color'),l.color)}${colorField('secondary',t('secondary'),l.secondary)}</div>${l.customMotif?`${checkbox('motifTint',t('motifTint'),l.motifTint,'layer')}<p class="helper">${esc(t('motifTintHint'))}</p>`:''}${numeric('opacity',t('opacity'),l.opacity,0,1,.01,'layer')}<div class="swatches">${palettes.map(([a,b])=>`<button class="swatch" data-action="palette" data-color="${a}" data-secondary="${b}" style="background:${a};--swatch-b:${b}" aria-label="${a} / ${b}" title="${a} / ${b}"></button>`).join('')}</div>`)}${details('transform',t('transform'),numeric('rotation',t('rotation'),l.rotation,-180,180,1,'layer')+numeric('scale',t('scale'),l.scale,.1,2,.01,'layer')+numeric('offsetX',t('offsetX'),l.offsetX,-doc.width,doc.width,1,'layer')+numeric('offsetY',t('offsetY'),l.offsetY,-doc.height,doc.height,1,'layer'),false)}${details('canvas',t('canvas'),`<div class="field"><label class="field-title" for="size-preset">${esc(t('proportion'))}</label><select class="select-wide" id="size-preset" data-action="size-preset"><option value="custom">${doc.width} × ${doc.height}</option><option value="512,512">512 × 512</option><option value="1024,1024">1024 × 1024</option><option value="2048,2048">2048 × 2048</option><option value="1920,1080">1920 × 1080</option><option value="1080,1920">1080 × 1920</option></select></div><div class="dimensions"><label>${esc(t('width'))}<input type="number" min="128" max="4096" step="1" data-target="doc" data-key="width" value="${doc.width}"></label><label>${esc(t('height'))}<input type="number" min="128" max="4096" step="1" data-target="doc" data-key="height" value="${doc.height}"></label></div><div style="height:15px"></div>${checkbox('transparent',t('transparent'),doc.transparent)}${colorField('background',t('background'),doc.background,'doc')}${checkbox('seamless',t('seamless'),doc.seamless)}<p class="helper">${esc(t('seamlessHint'))}</p>${numeric('seed',t('seed'),doc.seed,1,999999,1,'doc')}`,true)}`;
  for(const el of $$('.inspector details'))if(openSections.has(el.dataset.section))el.open=openSections.get(el.dataset.section);
 }
 function renderApp(){finishPointer();motionRun?.cancel();const sections=new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));const listScroll=$('#pattern-list')?.scrollTop??0,inspectorScroll=$('#pattern-list .active')?.dataset.pattern===active().type?($('#inspector')?.scrollTop??0):0;document.documentElement.lang={zh:'zh-Hant',en:'en',ja:'ja'}[lang];document.documentElement.dataset.theme=prefs.theme==='dark'?'dark':'light';const p=pattern(active().type);
- $('#app').innerHTML=`<header class="topbar"><div class="brand"><img src="icon.svg" alt=""><span>C-TextureMaker</span><small>1.1.0</small></div><button class="document-name text-btn" data-action="rename" title="${esc(t('rename'))}">${icon('file')}<span>${esc(doc.name)}</span></button><div class="top-actions">${ib('new','plus','newDoc')}${tb('open','open','open')}${tb('save','save','save')}<span class="divider"></span>${ib('undo','undo','undo',past.length?'':'disabled')}${ib('redo','redo','redo',future.length?'':'disabled')}<span class="divider"></span>${ib('theme',prefs.theme==='dark'?'sun':'moon','theme')}<select class="language-select" data-action="language" aria-label="${esc(t('language'))}"><option value="zh" ${lang==='zh'?'selected':''}>繁體中文</option><option value="en" ${lang==='en'?'selected':''}>English</option><option value="ja" ${lang==='ja'?'selected':''}>日本語</option></select>${ib('help','help','help')}<button class="button primary export-top" data-action="export">${icon('export')}${esc(t('export'))}</button></div></header><main class="workspace ${focus?'focus':''}"><aside class="library" aria-label="${esc(t('library'))}"><div class="library-head"><div class="section-title">${esc(t('library'))}<span class="mono">15</span></div><label class="search-box">${icon('search')}<input id="pattern-search" aria-label="${esc(t('search'))}" placeholder="${esc(t('search'))}" value="${esc(query)}"></label><nav class="category-tabs">${['all','radial','pattern','organic','technical'].map(c=>`<button data-action="category" data-category="${c}" class="${category===c?'active':''}">${esc(t(c))}</button>`).join('')}</nav></div><div id="pattern-list" class="pattern-list"></div><div class="library-bottom"><div class="section-title">${esc(t('layers'))}${ib('add-layer','plus','addLayer')}</div><div id="layer-list" class="layer-list"></div><div class="layer-tools">${ib('layer-up','up','moveUp')}${ib('layer-down','down','moveDown')}${ib('duplicate','copy','duplicate')}${ib('delete','trash','remove')}</div></div><button class="preset-launch" data-action="presets">${icon('star')}<span>${esc(t('presets'))}</span>${icon('chevron')}</button></aside><section class="stage" aria-label="${esc(t('canvas'))}"><div class="stage-header"><span class="art-title" id="art-title">${esc(label(p.name))}</span><span class="mono" id="dimensions-label">${doc.width} × ${doc.height}</span><div class="views"><button data-action="view-single" class="${repeat===1?'active':''}">${esc(t('single'))}</button><button data-action="view-repeat" class="${repeat===3?'active':''}">${esc(t('repeat'))}</button></div>${ib('edges','grid','tileEdges')}</div><div class="viewport" id="viewport" data-canvas-tool="${canvasTool}"><div id="brush-cursor" class="brush-cursor" hidden></div><div class="stage-status">${esc(t('live'))}</div><div class="artboard-wrap" id="artboard-wrap"><div class="artboard-label" id="artboard-label"></div><div class="artboard" id="artboard"></div><div id="tile-grid" class="tile-grid" hidden></div></div>${['dots','polygons'].includes(active().type)?`<div class="cell-edit-bar">${cellToolbar()}</div>`:''}</div><div class="stage-foot"><span class="stage-caption">${esc(t('vector'))}</span><div class="zoom-controls">${ib('tool-cursor','cursor','cursorTool',`aria-pressed="${canvasTool==='cursor'}"`)}${ib('tool-hand','hand','handTool',`aria-pressed="${canvasTool==='hand'}"`)}<span class="divider"></span>${ib('zoom-out','minus','zoomOut')}<span id="zoom-label" class="mono">100%</span>${ib('zoom-in','plus','zoomIn')}<span class="divider"></span>${ib('fit','fit','fit')}</div><div class="stage-focus">${ib('focus','expand',focus?'showPanel':'hidePanel')}</div></div></section><aside class="inspector" id="inspector" aria-label="${esc(t('properties'))}"></aside></main><footer class="statusbar"><span class="local-dot"></span><span>${esc(t('offline'))}</span><span class="line"></span><span id="save-status">${esc(t(saveState))}</span><span class="right"><span class="canvas-help">${esc(t('canvasHint'))}</span><span id="render-time" class="mono"></span><button type="button" id="alpha-status" class="pill alpha-status-toggle" data-action="toggle-alpha" aria-pressed="${doc.transparent}" aria-label="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}" title="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}">${esc(t(doc.transparent?'alpha':'solid'))}</button></span></footer>`;
+ $('#app').innerHTML=`<header class="topbar"><div class="brand"><img src="icon.svg" alt=""><span>C-TextureMaker</span><small>1.2.0</small></div><button class="document-name text-btn" data-action="rename" title="${esc(t('rename'))}">${icon('file')}<span>${esc(doc.name)}</span></button><div class="top-actions">${ib('new','plus','newDoc')}${tb('open','open','open')}${tb('save','save','save')}<span class="divider"></span>${ib('undo','undo','undo',past.length?'':'disabled')}${ib('redo','redo','redo',future.length?'':'disabled')}<span class="divider"></span>${ib('theme',prefs.theme==='dark'?'sun':'moon','theme')}<select class="language-select" data-action="language" aria-label="${esc(t('language'))}"><option value="zh" ${lang==='zh'?'selected':''}>繁體中文</option><option value="en" ${lang==='en'?'selected':''}>English</option><option value="ja" ${lang==='ja'?'selected':''}>日本語</option></select>${ib('help','help','help')}<button class="button primary export-top" data-action="export">${icon('export')}${esc(t('export'))}</button></div></header><main class="workspace ${focus?'focus':''}"><aside class="library" aria-label="${esc(t('library'))}"><div class="library-head"><div class="section-title">${esc(t('library'))}<span class="mono">15</span></div><label class="search-box">${icon('search')}<input id="pattern-search" aria-label="${esc(t('search'))}" placeholder="${esc(t('search'))}" value="${esc(query)}"></label><nav class="category-tabs">${['all','radial','pattern','organic','technical'].map(c=>`<button data-action="category" data-category="${c}" class="${category===c?'active':''}">${esc(t(c))}</button>`).join('')}</nav></div><div id="pattern-list" class="pattern-list"></div><div class="library-bottom"><div class="section-title">${esc(t('layers'))}${ib('add-layer','plus','addLayer')}</div><div id="layer-list" class="layer-list"></div><div class="layer-tools">${ib('layer-up','up','moveUp')}${ib('layer-down','down','moveDown')}${ib('duplicate','copy','duplicate')}${ib('delete','trash','remove')}</div></div><button class="preset-launch" data-action="presets">${icon('star')}<span>${esc(t('presets'))}</span>${icon('chevron')}</button></aside><section class="stage" aria-label="${esc(t('canvas'))}"><div class="stage-header"><span class="art-title" id="art-title">${esc(label(p.name))}</span><span class="mono" id="dimensions-label">${doc.width} × ${doc.height}</span><div class="views"><button data-action="view-single" class="${repeat===1?'active':''}">${esc(t('single'))}</button><button data-action="view-repeat" class="${repeat===3?'active':''}">${esc(t('repeat'))}</button></div>${ib('edges','grid','tileEdges')}</div><div class="viewport" id="viewport" data-canvas-tool="${canvasTool}"><div id="brush-cursor" class="brush-cursor" hidden></div><svg id="connect-guide" class="connect-guide" aria-hidden="true" hidden><line/><circle r="6"/></svg><div class="stage-status">${esc(t('live'))}</div><div class="artboard-wrap" id="artboard-wrap"><div class="artboard-label" id="artboard-label"></div><div class="artboard" id="artboard"></div><div id="tile-grid" class="tile-grid" hidden></div></div>${['dots','polygons'].includes(active().type)?`<div class="cell-edit-bar">${cellToolbar()}</div>`:''}</div><div class="stage-foot"><span class="stage-caption">${esc(t('vector'))}</span><div class="zoom-controls">${ib('tool-cursor','cursor','cursorTool',`aria-pressed="${canvasTool==='cursor'}"`)}${ib('tool-hand','hand','handTool',`aria-pressed="${canvasTool==='hand'}"`)}<span class="divider"></span>${ib('zoom-out','minus','zoomOut')}<span id="zoom-label" class="mono">100%</span>${ib('zoom-in','plus','zoomIn')}<span class="divider"></span>${ib('fit','fit','fit')}</div><div class="stage-focus">${ib('focus','expand',focus?'showPanel':'hidePanel')}</div></div></section><aside class="inspector" id="inspector" aria-label="${esc(t('properties'))}"></aside></main><footer class="statusbar"><span class="local-dot"></span><span>${esc(t('offline'))}</span><span class="line"></span><span id="save-status">${esc(t(saveState))}</span><span class="right"><span class="canvas-help">${esc(t('canvasHint'))}</span><span id="render-time" class="mono"></span><button type="button" id="alpha-status" class="pill alpha-status-toggle" data-action="toggle-alpha" aria-pressed="${doc.transparent}" aria-label="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}" title="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}">${esc(t(doc.transparent?'alpha':'solid'))}</button></span></footer>`;
  if(nativeHost){$('.topbar').insertAdjacentHTML('beforeend',`<div class="window-controls">${ib('window-minimize','minus','minimize')}${ib('window-maximize','windowMaximize','maximize')}${ib('window-close','close','closeWindow')}</div>`);updateWindowState(windowMaximized);nativeHost.postMessage({type:'window',action:'theme',theme:prefs.theme==='dark'?'dark':'light'});nativeHost.postMessage({type:'window',action:'state'});}
  renderPatternList();renderLayers();renderInspector(sections);renderPreview();bindViewport();updateCanvasCursor();$('#pattern-list').scrollTop=listScroll;$('#inspector').scrollTop=inspectorScroll;
 }
@@ -85,8 +87,8 @@ function updateWindowState(maximized){windowMaximized=Boolean(maximized);const b
 function syncHistory(){const u=$('[data-action=undo]'),r=$('[data-action=redo]');if(u)u.disabled=!past.length;if(r)r.disabled=!future.length;}
 function push(before){if(JSON.stringify(doc)===before)return;past.push(before);let budget=past.reduce((n,s)=>n+s.length,0);while(past.length>1&&(past.length>60||budget>24*1024*1024))budget-=past.shift().length;future=[];syncHistory();autosave();}
 function flush(){if(pendingBefore!==null){const b=pendingBefore;pendingBefore=null;push(b);}}
-function mutate(fn,render=true){finishPointer();flush();const before=JSON.stringify(doc);fn();push(before);if(render)renderApp();else schedulePreview();}
-function historyMove(direction){finishPointer();flush();const from=direction==='undo'?past:future,to=direction==='undo'?future:past;if(!from.length)return;to.push(JSON.stringify(doc));doc=JSON.parse(from.pop());if(!doc.layers.some(l=>l.id===selected))selected=doc.layers[0].id;renderApp();autosave();}
+function mutate(fn,render=true){finishPointer();flush();connectStart=null;const before=JSON.stringify(doc);fn();push(before);if(render)renderApp();else schedulePreview();}
+function historyMove(direction){finishPointer();flush();connectStart=null;const from=direction==='undo'?past:future,to=direction==='undo'?future:past;if(!from.length)return;to.push(JSON.stringify(doc));doc=JSON.parse(from.pop());if(!doc.layers.some(l=>l.id===selected))selected=doc.layers[0].id;renderApp();autosave();}
 function setSaveState(key){saveState=key;const status=$('#save-status');if(status)status.textContent=t(key);}
 function queueAutosave(snapshot,version){const write=()=>persistentStorage.setRecord('autosave',snapshot),task=autosaveQueue.then(write,write);autosaveQueue=task.then(()=>undefined,()=>undefined);task.then(okay=>{if(version===autosaveSequence)setSaveState(okay?'autosaved':'autosaveFailed');},()=>{if(version===autosaveSequence)setSaveState('autosaveFailed');});}
 function autosave(){if(!storageReady)return;clearTimeout(saveTimer);const version=++autosaveSequence;setSaveState('saving');saveTimer=setTimeout(()=>{saveTimer=0;queueAutosave(clone(doc),version);},350);}
@@ -94,7 +96,7 @@ function persistAutosaveNow(){clearTimeout(saveTimer);saveTimer=0;if(!storageRea
 function toast(key,raw=false){clearTimeout(toastTimer);const el=$('#toast');el.textContent=raw?key:t(key);el.classList.add('show');toastTimer=setTimeout(()=>el.classList.remove('show'),3000);}
 function schedulePreview(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;renderPreview();});}
 function renderPreview(){const start=performance.now(),rgb=active().color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160;$('#artboard').style.setProperty('--checker1',bright?'#424242':'#ffffff');$('#artboard').style.setProperty('--checker2',bright?'#373737':'#f0f0f0');try{$('#artboard').innerHTML=renderSVG(doc,{preview:true,repeat});}catch(e){console.error(e);toast('exportError');return;}const elapsed=performance.now()-start;$('#render-time').textContent=`${Math.round(elapsed)} ms`;$('#dimensions-label').textContent=`${doc.width} × ${doc.height}`;$('#artboard-label').textContent=`${doc.width} × ${doc.height}${repeat===3?' / 3 × 3':''} · ${doc.seamless?t('seamless'):t('single')}`;const alphaStatus=$('#alpha-status'),alphaStatusTitle=t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid');alphaStatus.textContent=t(doc.transparent?'alpha':'solid');alphaStatus.setAttribute('aria-pressed',String(doc.transparent));alphaStatus.setAttribute('aria-label',alphaStatusTitle);alphaStatus.title=alphaStatusTitle;$('#tile-grid').hidden=!(repeat===3&&tileEdges);fitLayout();}
-function fitLayout(){const vp=$('#viewport');if(!vp)return;const rect=vp.getBoundingClientRect(),base=Math.min((rect.width-82)/(doc.width*repeat),(rect.height-76)/(doc.height*repeat));const unit=Math.max(.025,base)*zoom;const art=$('#artboard'),wrap=$('#artboard-wrap');art.style.width=`${doc.width*repeat*unit}px`;art.style.height=`${doc.height*repeat*unit}px`;wrap.style.transform=`translate(calc(-50% + ${pan.x}px),calc(-50% + ${pan.y}px))`;$('#zoom-label').textContent=`${Math.round(unit*100)}%`;if(lastCanvasPoint)updateBrushCursor(lastCanvasPoint);}
+function fitLayout(){const vp=$('#viewport');if(!vp)return;const rect=vp.getBoundingClientRect(),base=Math.min((rect.width-82)/(doc.width*repeat),(rect.height-76)/(doc.height*repeat));const unit=Math.max(.025,base)*zoom;const art=$('#artboard'),wrap=$('#artboard-wrap');art.style.width=`${doc.width*repeat*unit}px`;art.style.height=`${doc.height*repeat*unit}px`;wrap.style.transform=`translate(calc(-50% + ${pan.x}px),calc(-50% + ${pan.y}px))`;$('#zoom-label').textContent=`${Math.round(unit*100)}%`;if(lastCanvasPoint)updateBrushCursor(lastCanvasPoint);updateConnectGuide();}
 function fit(){finishPointer();zoom=1;pan={x:0,y:0};fitLayout();}
 window.addEventListener('resize',fitLayout);
 
@@ -109,7 +111,7 @@ function setField(el,finish){
  }
  const key=el.dataset.key,target=el.dataset.target,obj=target==='doc'?doc:target==='layer'?active():active().params;let v;
  if(el.type==='checkbox')v=el.checked;else if(el.type==='range'||el.type==='number'){if(el.value===''||!Number.isFinite(el.valueAsNumber))return;const step=Number(el.step)||1;v=clamp(Math.round(el.valueAsNumber/step)*step,Number(el.min),Number(el.max));v=Number(v.toFixed(4));}else {v=el.value;if(['color','secondary','background'].includes(key)&&!/^#[0-9a-f]{6}$/i.test(v)){if(finish)el.value=obj[key];return;}if(target==='params'){const c=pattern(active().type).controls.find(c=>c.key===key);const option=c?.options?.find(o=>String(o.value)===v);if(option)v=option.value;}}
- if(pendingBefore===null)pendingBefore=JSON.stringify(doc);if(target==='params'&&key==='shape')active().customMotif=null;obj[key]=v;
+ if(pendingBefore===null)pendingBefore=JSON.stringify(doc);connectStart=null;if(target==='params'&&key==='shape')active().customMotif=null;obj[key]=v;
  $$(`[data-target="${target}"][data-key="${key}"]`).forEach(other=>{if(other!==el){if(other.type==='checkbox')other.checked=v;else other.value=v;}});schedulePreview();if(finish){flush();if(target==='params'&&(el.tagName==='SELECT'||el.type==='checkbox'||key==='diagonals'))renderInspector();if(target==='doc'&&['width','height'].includes(key))fit();}
 }
 
@@ -147,10 +149,13 @@ document.addEventListener('click',async e=>{if(!storageReady)return;const card=e
  else if(a==='remove-preset'){e.stopPropagation();const arr=savedPresets.filter(p=>p.id!==b.dataset.id);if(await persistPresets(arr))presetsDialog();else toast('saveFailed');}
  else if(a==='edit-mode')setEditMode(b.dataset.mode);
  else if(a==='restore-cells')mutate(()=>{active().hiddenCells=[];});
+ else if(a==='clear-links')mutate(()=>{active().cellLinks=[];});
+ else if(a==='image-cells')imageCellsDialog();
  else if(a==='shape-library')shapeLibraryDialog();
  else if(a==='import-shape'||a==='import-mask'){imageTarget=a==='import-shape'?'customMotif':'mask';$('#file-image').click();}
  else if(a==='use-shape'){const shape=sharedShapes.find(s=>s.id===b.dataset.id);if(shape&&SHAPE_PATTERNS.includes(active().type)){mutate(()=>{active().customMotif=shape.data;});closeDialog();}}
  else if(a==='remove-shape'){try{await updateShapeLibrary(library=>({library:removeShape(library,b.dataset.id)}));shapeLibraryDialog();}catch(error){shapeError(error);}}
+ else if(a==='rename-shape'){const shape=sharedShapes.find(s=>s.id===b.dataset.id);if(shape)nameDialog('renameShape',shape.name,async name=>{try{await updateShapeLibrary(library=>({library:renameShape(library,shape.id,name)}));shapeLibraryDialog();}catch(error){shapeError(error);}});}
  else if(a==='add-current-shape'){try{const data=active().customMotif;await updateShapeLibrary(library=>addShape(library,{id:uid(),name:t('customShape'),data}));shapeLibraryDialog();}catch(error){shapeError(error);}}
  else if(a==='clear-motif'||a==='clear-mask'){mutate(()=>{active()[a==='clear-motif'?'customMotif':'mask']=null;});if(a==='clear-motif')closeDialog();}
  else if(a==='replay'){closeDialog();playEntrance();}
@@ -165,6 +170,20 @@ function updateCanvasCursor(){
  vp.dataset.canvasTool=space?'hand':canvasTool;vp.dataset.cellEditing=String(editableCells());vp.dataset.brush=String(brushMode());
  for(const tool of ['cursor','hand'])$(`[data-action="tool-${tool}"]`)?.setAttribute('aria-pressed',String(canvasTool===tool));
  if(lastCanvasPoint)updateBrushCursor(lastCanvasPoint);
+ updateConnectGuide();
+}
+function updateConnectGuide(){
+ const guide=$('#connect-guide');if(!guide)return;
+ const show=Boolean(connectStart&&editMode==='connect'&&editableCells()&&canvasTool==='cursor'&&!space);
+ guide.toggleAttribute('hidden',!show);
+ const status=$('.connect-status');if(status)status.textContent=t(connectStart?'connectSecond':'connectFirst');
+ if(!show)return;
+ const vp=$('#viewport').getBoundingClientRect(),art=$('#artboard').getBoundingClientRect();
+ const x=art.left-vp.left+connectStart.x*art.width,y=art.top-vp.top+connectStart.y*art.height;
+ const circle=$('circle',guide),line=$('line',guide);
+ circle.setAttribute('cx',x);circle.setAttribute('cy',y);
+ line.setAttribute('x1',x);line.setAttribute('y1',y);
+ line.setAttribute('x2',lastCanvasPoint?lastCanvasPoint.clientX-vp.left:x);line.setAttribute('y2',lastCanvasPoint?lastCanvasPoint.clientY-vp.top:y);
 }
 function updateBrushCursor(point){
  const ring=$('#brush-cursor'),vp=$('#viewport');if(!ring||!vp)return;
@@ -196,9 +215,21 @@ function applyCellIds(ids){
  for(const id of ids){
   if(pointer.seen.has(id))continue;pointer.seen.add(id);
   if(mode==='connect'){
-   if(!connectStart){connectStart=id;continue;}
-   const [y0,x0]=connectStart.split(':').map(Number),[y1,x1]=id.split(':').map(Number),steps=Math.max(Math.abs(x1-x0),Math.abs(y1-y0),1);
-   for(let i=0;i<=steps;i++)hidden.delete(`${Math.round(y0+(y1-y0)*i/steps)}:${Math.round(x0+(x1-x0)*i/steps)}`);connectStart=null;
+   if(!connectStart){
+    const center=pointer.cells.filter(cell=>cell.id===id).sort((a,b)=>Math.hypot(a.x-pointer.last.x,a.y-pointer.last.y)-Math.hypot(b.x-pointer.last.x,b.y-pointer.last.y))[0],rect=$('#artboard').getBoundingClientRect();
+    if(center)connectStart={id,x:(center.x-rect.left)/rect.width,y:(center.y-rect.top)/rect.height};
+    updateConnectGuide();continue;
+   }
+   const from=connectStart.id;connectStart=null;
+   if(from!==id){
+    const index=l.cellLinks.findIndex(link=>(link.from===from&&link.to===id)||(link.from===id&&link.to===from));
+    if(index>=0)l.cellLinks.splice(index,1);
+    else if(l.cellLinks.length>=2000)toast('linksFull');
+    else{l.cellLinks.push({from,to:id});hidden.delete(from);hidden.delete(id);}
+    const clear=$('[data-action="clear-links"]');if(clear)clear.disabled=!l.cellLinks.length;
+    schedulePreview();
+   }
+   updateConnectGuide();
   }else if(mode==='erase')hidden.add(id);else if(mode==='paint')hidden.delete(id);else if(hidden.has(id))hidden.delete(id);else hidden.add(id);
  }
  const next=[...hidden];if(next.length!==l.hiddenCells.length||next.some((id,i)=>id!==l.hiddenCells[i])){l.hiddenCells=next;schedulePreview();}
@@ -223,6 +254,7 @@ window.addEventListener('keydown',e=>{
  else if(mod&&e.key.toLowerCase()==='o'){e.preventDefault();$('#file-project').click();}
  else if(mod&&e.key.toLowerCase()==='e'){e.preventDefault();exportDialog();}
  else if(e.code==='Space'&&!mod){e.preventDefault();if(pointer?.mode==='cell')finishPointer();space=true;updateCanvasCursor();}
+ else if(e.key==='Escape'&&connectStart){e.preventDefault();connectStart=null;updateConnectGuide();}
  else if(e.key.toLowerCase()==='f')fit();else if(e.key.toLowerCase()==='r')$('[data-action=random]').click();
 });
 window.addEventListener('keyup',e=>{if(e.code==='Space'){space=false;updateCanvasCursor();}});
@@ -241,13 +273,85 @@ function bindViewport(){
   if(pointer){vp.setPointerCapture(e.pointerId);e.preventDefault();}lastCanvasPoint={clientX:e.clientX,clientY:e.clientY};updateBrushCursor(lastCanvasPoint);
  });
  vp.addEventListener('pointermove',e=>{
-  lastCanvasPoint={clientX:e.clientX,clientY:e.clientY};updateBrushCursor(lastCanvasPoint);
+  lastCanvasPoint={clientX:e.clientX,clientY:e.clientY};updateBrushCursor(lastCanvasPoint);updateConnectGuide();
   if(!pointer||pointer.id!==e.pointerId)return;
   if(pointer.mode==='pan'){pan={x:pointer.px+e.clientX-pointer.x,y:pointer.py+e.clientY-pointer.y};fitLayout();}
   else editAt(e);
  });
- vp.addEventListener('pointerleave',()=>{lastCanvasPoint=null;$('#brush-cursor').hidden=true;});
+ vp.addEventListener('pointerleave',()=>{lastCanvasPoint=null;$('#brush-cursor').hidden=true;updateConnectGuide();});
  for(const event of ['pointerup','pointercancel','lostpointercapture'])vp.addEventListener(event,e=>{if(pointer?.id===e.pointerId)finishPointer();});
+}
+
+// Read the same SVG geometry used by the editor, independently of zoom or pan.
+function documentCellCenters(document){
+ const holder=window.document.createElement('div');holder.style.cssText='position:fixed;left:-100000px;top:0;visibility:hidden;pointer-events:none';
+ holder.innerHTML=renderSVG(document,{preview:true});window.document.body.append(holder);
+ try{
+  const svg=$('svg',holder);svg.style.width=`${document.width}px`;svg.style.height=`${document.height}px`;
+  return $$('[data-cell]',holder).map(el=>{const m=el.getCTM(),x=Number(el.dataset.cx),y=Number(el.dataset.cy);return{id:el.dataset.cell,x:m.a*x+m.c*y+m.e,y:m.b*x+m.d*y+m.f};});
+ }finally{holder.remove();}
+}
+function imageCellsDialog(){
+ if(!['dots','polygons'].includes(active().type))return;
+ finishPointer();flush();connectStart=null;updateConnectGuide();
+ const originalDoc=doc,layerId=selected,previewDoc=clone(doc);previewDoc.layers=[clone(active())];previewDoc.layers[0].visible=true;
+ const cells=documentCellCenters(previewDoc);
+ const d=dialog(`<div class="eyebrow">C-TextureMaker / Image to cells</div><h2>${esc(t('imageCells'))}</h2><p class="intro">${esc(t('imageCellsIntro'))}</p><div class="image-upload-row"><button class="button" id="choose-cell-image">${icon('plus')}${esc(t('chooseImage'))}</button><span id="cell-image-name" class="helper">${esc(t('imageCellsFormats'))}</span><input id="file-cell-image" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden></div><div class="image-cell-previews"><section><div class="image-preview-heading"><button class="text-btn" data-source-view="original">${esc(t('sourceImage'))}</button><button class="text-btn active" data-source-view="binary">${esc(t('binaryImage'))}</button></div><div class="image-preview-box"><canvas id="image-binary-preview" hidden></canvas><span class="helper image-placeholder">${esc(t('imageCellsReady'))}</span></div></section><section><div class="image-preview-heading">${esc(t('cellResult'))}<span id="image-cell-count" class="mono"></span></div><div class="image-preview-box image-result" id="image-cell-result"><span class="helper image-placeholder">${esc(t('imageCellsReady'))}</span></div></section></div><fieldset id="image-cell-settings" disabled><div class="image-threshold-row"><label for="image-threshold">${esc(t('threshold'))}</label><input id="image-threshold-number" type="number" aria-label="${esc(t('threshold'))}" min="0" max="255" step="1" value="128"><button class="button" id="auto-image-threshold">${esc(t('autoThreshold'))}</button></div><div class="field"><input id="image-threshold" aria-label="${esc(t('threshold'))}" type="range" min="0" max="255" step="1" value="128"></div><div class="image-fit-row"><label class="toggle-row"><span>${esc(t('invertImage'))}</span><input id="invert-cell-image" type="checkbox"></label><label class="image-fit-label">${esc(t('imageFit'))}<select id="cell-image-fit"><option value="contain">${esc(t('containImage'))}</option><option value="cover">${esc(t('coverImage'))}</option></select></label></div></fieldset><p class="helper">${esc(t('imageCellsHint'))}</p><div class="modal-footer"><button class="button" data-action="close-dialog">${esc(t('cancel'))}</button><button class="button primary" id="apply-image-cells" disabled>${esc(t('applyImageCells'))}</button></div>`,'image-cells-modal');
+ const scale=Math.min(1,1536/Math.max(doc.width,doc.height)),w=Math.max(1,Math.round(doc.width*scale)),h=Math.max(1,Math.round(doc.height*scale));
+ const source=document.createElement('canvas');source.width=w;source.height=h;
+ const sourceContext=source.getContext('2d',{willReadFrequently:true}),canvas=$('#image-binary-preview',d);canvas.width=w;canvas.height=h;
+ const rgb=previewDoc.layers[0].color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160,resultBox=$('#image-cell-result',d);
+ resultBox.style.setProperty('--checker1',bright?'#424242':'#ffffff');resultBox.style.setProperty('--checker2',bright?'#373737':'#f0f0f0');
+ let image=null,sourceUrl=null,field=null,result=null,view='binary',job=0,previewFrame=0;
+ const showPreview=()=>{
+  if(!field||!d.open)return;
+  const threshold=Number($('#image-threshold',d).value),invert=$('#invert-cell-image',d).checked;
+  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,w,h);
+  if(view==='original')ctx.drawImage(source,0,0);else ctx.putImageData(new ImageData(binaryPreview(field,{threshold,invert}),w,h),0,0);
+  result=classifyCells(field,cells,{width:previewDoc.width,height:previewDoc.height,threshold,invert,seamless:previewDoc.seamless});
+  previewDoc.layers[0].hiddenCells=[...result.hiddenCells];
+  $('#image-cell-result',d).innerHTML=renderSVG(previewDoc);
+  $('#image-cell-count',d).textContent=`${t('cellsKept')} ${result.visibleCount} / ${result.totalCount}`;
+ };
+ const schedule=()=>{if(!previewFrame)previewFrame=requestAnimationFrame(()=>{previewFrame=0;showPreview();});};
+ const prepare=()=>{
+  if(!image)return;
+  sourceContext.clearRect(0,0,w,h);const fit=$('#cell-image-fit',d).value==='cover'?Math.max(w/image.naturalWidth,h/image.naturalHeight):Math.min(w/image.naturalWidth,h/image.naturalHeight);
+  const iw=image.naturalWidth*fit,ih=image.naturalHeight*fit;sourceContext.drawImage(image,(w-iw)/2,(h-ih)/2,iw,ih);
+  field=grayscaleImage(sourceContext.getImageData(0,0,w,h));
+  const value=autoThreshold(field);$('#image-threshold',d).value=value;$('#image-threshold-number',d).value=value;showPreview();
+ };
+ const release=()=>{job++;cancelAnimationFrame(previewFrame);if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceUrl=null;image=null;};
+ d.addEventListener('close',release,{once:true});
+ $('#choose-cell-image',d).onclick=()=>$('#file-cell-image',d).click();
+ $('#file-cell-image',d).onchange=async e=>{
+  const file=e.target.files[0];e.target.value='';if(!file)return;const ticket=++job;
+  $('#apply-image-cells',d).disabled=true;$('#image-cell-settings',d).disabled=true;$('#cell-image-name',d).textContent=t('imageCellsLoading');
+  let url=null;
+  try{
+   const svg=file.type==='image/svg+xml'||/\.svg$/i.test(file.name);
+   if(file.size>16*1024*1024||(!svg&&!/^image\/(png|jpeg|webp)$/.test(file.type)&&! /\.(png|jpe?g|webp)$/i.test(file.name)))throw new Error('Invalid image file');
+   url=svg?await importShapeFile(file):URL.createObjectURL(file);
+   const loaded=new Image();loaded.src=url;await loaded.decode();
+   if(!loaded.naturalWidth||!loaded.naturalHeight||loaded.naturalWidth>8192||loaded.naturalHeight>8192)throw new Error('Invalid image dimensions');
+   if(ticket!==job||!d.open)return;
+   if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceUrl=url;url=null;image=loaded;prepare();
+   canvas.hidden=false;$('.image-placeholder',d)?.remove();$('#cell-image-name',d).textContent=file.name;$('#image-cell-settings',d).disabled=false;$('#apply-image-cells',d).disabled=false;
+  }catch{
+   if(ticket===job&&d.open){$('#cell-image-name',d).textContent=t('imageCellsInvalid');$('#image-cell-settings',d).disabled=!field;$('#apply-image-cells',d).disabled=!field;}
+  }finally{if(url?.startsWith('blob:'))URL.revokeObjectURL(url);}
+ };
+ for(const input of [$('#image-threshold',d),$('#image-threshold-number',d)])input.oninput=()=>{
+  if(input.value===''||!Number.isFinite(input.valueAsNumber))return;
+  const value=Math.round(clamp(input.valueAsNumber,0,255));$('#image-threshold',d).value=value;$('#image-threshold-number',d).value=value;schedule();
+ };
+ $('#auto-image-threshold',d).onclick=()=>{if(field){const value=autoThreshold(field);$('#image-threshold',d).value=value;$('#image-threshold-number',d).value=value;schedule();}};
+ $('#invert-cell-image',d).onchange=schedule;$('#cell-image-fit',d).onchange=prepare;
+ $$('[data-source-view]',d).forEach(button=>button.onclick=()=>{view=button.dataset.sourceView;$$('[data-source-view]',d).forEach(b=>b.classList.toggle('active',b===button));schedule();});
+ $('#apply-image-cells',d).onclick=()=>{
+  if(!field||doc!==originalDoc)return;showPreview();const layer=doc.layers.find(l=>l.id===layerId);if(!layer||!result)return;
+  const hidden=[...previewDoc.layers[0].hiddenCells];closeDialog();mutate(()=>{layer.hiddenCells=hidden;});toast('imageCellsApplied');
+ };
 }
 
 function dialog(content,cls=''){closeDialog();$('#dialog-root').innerHTML=`<dialog class="${cls}">${ib('close-dialog','close','close')}<div class="modal-content">${content}</div></dialog>`;const d=$('dialog');$('.icon-btn',d).classList.add('modal-close');d.showModal();d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});d.addEventListener('close',()=>d.remove());return d;}
@@ -264,7 +368,7 @@ function updateShapeLibrary(update){
 function shapeError(error){const keys={ShapeLibraryFull:'shapeLibraryFull',ShapeLibrarySaveFailed:'shapeLibrarySaveFailed',ShapeLibraryReadFailed:'shapeLibraryReadFailed'};toast(keys[error.message]??'invalidImage');}
 function shapeLibraryDialog(){
  const current=active().customMotif,disabled=shapeLibraryReady?'':'disabled';
- dialog(`<div class="eyebrow">C-TextureMaker / Shapes</div><h2>${esc(t('shapeLibrary'))}</h2><p class="intro">${esc(t('sharedShapeHint'))}</p><div class="shape-library-actions"><button class="button primary" data-action="import-shape" ${disabled}>${icon('plus')}${esc(t('uploadShape'))}</button><span class="mono">${sharedShapes.length} / 40</span></div>${shapeLibraryReady?'':`<p class="helper" role="alert">${esc(t('shapeLibraryReadFailed'))}</p>`}<div class="shape-grid">${sharedShapes.map(shape=>`<div class="shape-card ${shape.data===current?'active':''}"><button class="shape-apply" data-action="use-shape" data-id="${esc(shape.id)}" title="${esc(t('applyShape'))}: ${esc(shape.name)}"><span class="shape-preview"><img src="${esc(shape.data)}" alt=""></span><span class="shape-name">${esc(shape.name)}</span></button>${ib('remove-shape','trash','removeShape',`data-id="${esc(shape.id)}" ${disabled}`)}</div>`).join('')||`<p class="empty">${esc(t('noShapes'))}</p>`}</div>${current?`<div class="shape-current-actions">${!sharedShapes.some(s=>s.data===current)?`<button class="button" data-action="add-current-shape" ${disabled}>${icon('plus')}${esc(t('addCurrentShape'))}</button>`:''}<button class="button" data-action="clear-motif">${esc(t('clearMotif'))}</button></div>`:''}`,'shapes-modal');
+ dialog(`<div class="eyebrow">C-TextureMaker / Shapes</div><h2>${esc(t('shapeLibrary'))}</h2><p class="intro">${esc(t('sharedShapeHint'))}</p><div class="shape-library-actions"><button class="button primary" data-action="import-shape" ${disabled}>${icon('plus')}${esc(t('uploadShape'))}</button><span class="mono">${sharedShapes.length} / 40</span></div>${shapeLibraryReady?'':`<p class="helper" role="alert">${esc(t('shapeLibraryReadFailed'))}</p>`}<div class="shape-grid">${sharedShapes.map(shape=>`<div class="shape-card ${shape.data===current?'active':''}"><button class="shape-apply" data-action="use-shape" data-id="${esc(shape.id)}" title="${esc(t('applyShape'))}: ${esc(shape.name)}"><span class="shape-preview"><img src="${esc(shape.data)}" alt=""></span><span class="shape-name" title="${esc(shape.name)}">${esc(shape.name)}</span></button><div class="shape-tools">${ib('rename-shape','pencil','renameShape',`data-id="${esc(shape.id)}" ${disabled}`)}${ib('remove-shape','trash','removeShape',`data-id="${esc(shape.id)}" ${disabled}`)}</div></div>`).join('')||`<p class="empty">${esc(t('noShapes'))}</p>`}</div>${current?`<div class="shape-current-actions">${!sharedShapes.some(s=>s.data===current)?`<button class="button" data-action="add-current-shape" ${disabled}>${icon('plus')}${esc(t('addCurrentShape'))}</button>`:''}<button class="button" data-action="clear-motif">${esc(t('clearMotif'))}</button></div>`:''}`,'shapes-modal');
 }
 function nameDialog(key,value,callback){const d=dialog(`<div class="eyebrow">C-TextureMaker</div><h2>${esc(t(key))}</h2><form id="name-form"><input id="name-input" class="text-input" aria-label="${esc(t(key))}" maxlength="80" required value="${esc(value)}"><div class="modal-footer"><button type="button" class="button" data-action="close-dialog">${esc(t('cancel'))}</button><button type="submit" class="button primary">${esc(t('add'))}</button></div></form>`);$('#name-form',d).addEventListener('submit',e=>{e.preventDefault();const name=$('#name-input',d).value.trim();if(!name)return;closeDialog();callback(name);});$('#name-input',d).select();}
 function confirmNew(){const d=dialog(`<div class="eyebrow">C-TextureMaker</div><h2>${esc(t('replaceTitle'))}</h2><p class="intro">${esc(t('replaceBody'))}</p><div class="modal-footer"><button class="button" data-action="save">${esc(t('save'))}</button><button class="button primary" id="confirm-new">${esc(t('continue'))}</button></div>`);$('#confirm-new',d).onclick=()=>{closeDialog();mutate(()=>{doc=createDocument();doc.name=t('untitled');doc.layers[0].color='#35392f';doc.layers[0].secondary='#9da58f';selected=doc.layers[0].id;});fit();};}

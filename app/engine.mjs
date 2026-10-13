@@ -49,14 +49,31 @@ const isObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = v => JSON.parse(JSON.stringify(v));
 const hex = v => typeof v === 'string' && /^#[\da-fA-F]{6}$/.test(v);
 const safeId = v => typeof v === 'string' && /^[A-Za-z0-9_-]{1,48}$/.test(v);
+const cellId = v => typeof v === 'string' && /^(0|[1-9]\d{0,4}):(0|[1-9]\d{0,4})$/.test(v);
 let layerCounter = 0;
 function assert(condition, message) { if (!condition) throw new TypeError(message); }
+
+function normalizeCellLinks(value) {
+  assert(Array.isArray(value) && value.length <= 2000, 'Invalid cellLinks');
+  const links = [], seen = new Set();
+  for (const link of value) {
+    assert(isObject(link) && Object.keys(link).length === 2 && Object.hasOwn(link, 'from') && Object.hasOwn(link, 'to'), 'Invalid cell link');
+    assert(cellId(link.from) && cellId(link.to), 'Invalid cell link endpoint');
+    assert(link.from !== link.to, 'Cell links cannot connect a cell to itself');
+    const [from, to] = link.from < link.to ? [link.from, link.to] : [link.to, link.from];
+    const key = `${from}|${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push({ from, to });
+  }
+  return links;
+}
 
 export function createLayer(type, id = `layer-${Date.now().toString(36)}-${(++layerCounter).toString(36)}`) {
   const p = patternById.get(type);
   assert(p, `Unknown pattern: ${type}`);
   assert(safeId(id), 'Invalid layer id');
-  return { id, type, visible: true, opacity: 1, color: '#e9e6df', secondary: '#77736d', rotation: 0, scale: 1, offsetX: 0, offsetY: 0, params: clone(p.defaults), hiddenCells: [], customMotif: null, mask: null };
+  return { id, type, visible: true, opacity: 1, color: '#e9e6df', secondary: '#77736d', rotation: 0, scale: 1, offsetX: 0, offsetY: 0, params: clone(p.defaults), hiddenCells: [], customMotif: null, motifTint: false, cellLinks: [], linkWidth: 2, mask: null };
 }
 export function createDocument() {
   return { version: 1, name: 'Untitled', width: 1024, height: 1024, transparent: true, background: '#eeeae2', seamless: false, seed: 42, layers: [createLayer('contour', 'layer-1')] };
@@ -108,7 +125,7 @@ export function normalizeDocument(input) {
   const ids = new Set();
   const layers = input.layers.map(raw => {
     assert(isObject(raw), 'Layer must be an object');
-    const keys = new Set(['id','type','visible','opacity','color','secondary','rotation','scale','offsetX','offsetY','params','hiddenCells','customMotif','mask']);
+    const keys = new Set(['id','type','visible','opacity','color','secondary','rotation','scale','offsetX','offsetY','params','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask']);
     for (const k of Object.keys(raw)) assert(keys.has(k), `Unknown layer field: ${k}`);
     assert(safeId(raw.id) && !ids.has(raw.id), 'Invalid or duplicate layer id'); ids.add(raw.id);
     assert(patternById.has(raw.type), `Unknown layer type: ${raw.type}`);
@@ -127,6 +144,12 @@ export function normalizeDocument(input) {
     layer.params = normalizeParams(raw.type, raw.params);
     layer.hiddenCells = [...new Set(raw.hiddenCells)];
     layer.customMotif = validateDataImage(raw.customMotif, 'customMotif');
+    layer.motifTint = Object.hasOwn(raw, 'motifTint') ? raw.motifTint : false;
+    assert(typeof layer.motifTint === 'boolean', 'Invalid motifTint');
+    layer.cellLinks = Object.hasOwn(raw, 'cellLinks') ? normalizeCellLinks(raw.cellLinks) : [];
+    layer.linkWidth = Object.hasOwn(raw, 'linkWidth') ? raw.linkWidth : 2;
+    assert(typeof layer.linkWidth === 'number' && Number.isFinite(layer.linkWidth), 'Invalid linkWidth');
+    layer.linkWidth = Math.min(128, Math.max(0.25, layer.linkWidth));
     layer.mask = validateDataImage(raw.mask, 'mask');
     return layer;
   });
@@ -141,11 +164,44 @@ const transformNumber=value=>String(Number(value.toFixed(8)));
 const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const xy = (x,y) => `${fmt(x)},${fmt(y)}`;
 const hiddenSet = layer => new Set(layer.hiddenCells);
+function registerCellCenter(metrics, id, x, y, hidden) {
+  if (!metrics.cellCenters) metrics.cellCenters = new Map();
+  metrics.cellCenters.set(id, { x, y, hidden });
+}
 function attrs(layer, preview, cell) { return preview && cell !== undefined ? ` data-cell="${esc(cell)}" data-layer="${esc(layer.id)}"` : ''; }
 function cellCenter(preview,x,y) { return preview && Number.isFinite(x) && Number.isFinite(y) ? ` data-cx="${fmt(x)}" data-cy="${fmt(y)}"` : ''; }
 function line(x1,y1,x2,y2,stroke,width,extra='') { return `<path d="M${xy(x1,y1)}L${xy(x2,y2)}" fill="none" stroke="${stroke}" stroke-width="${fmt(width)}" ${extra}/>`; }
 function circle(x,y,r,fill,stroke='none',sw=0,extra='') { return `<circle cx="${fmt(x)}" cy="${fmt(y)}" r="${fmt(Math.max(0,r))}" fill="${fill}" stroke="${stroke}" stroke-width="${fmt(sw)}" ${extra}/>`; }
 function polygon(points,fill,stroke='none',sw=0,extra='') { return `<polygon points="${points.map(([x,y])=>xy(x,y)).join(' ')}" fill="${fill}" stroke="${stroke}" stroke-width="${fmt(sw)}" ${extra}/>`; }
+function renderCellLinks(layer, doc, metrics) {
+  if (!['dots','polygons'].includes(layer.type) || !layer.cellLinks.length || !metrics.cellCenters) return '';
+  const { width, height } = doc, cx = width / 2, cy = height / 2, angle = layer.rotation * Math.PI / 180;
+  const ca = Math.cos(angle), sa = Math.sin(angle), scale = layer.scale;
+  const toWorld = ([x,y]) => [cx + scale * (ca * (x - cx) - sa * (y - cy)), cy + scale * (sa * (x - cx) + ca * (y - cy))];
+  const toLocal = ([x,y]) => [cx + (ca * (x - cx) + sa * (y - cy)) / scale, cy + (-sa * (x - cx) + ca * (y - cy)) / scale];
+  const shortest = (delta, extent) => ((delta + extent / 2) % extent + extent) % extent - extent / 2;
+  const out = [];
+  for (const { from, to } of layer.cellLinks) {
+    const a = metrics.cellCenters.get(from), b = metrics.cellCenters.get(to);
+    if (!a || !b || a.hidden || b.hidden) continue;
+    let start = [a.x, a.y], end = [b.x, b.y];
+    if (doc.seamless) {
+      const worldStart = metrics.world ? start : toWorld(start), worldEnd = metrics.world ? end : toWorld(end);
+      const target = [worldStart[0] + shortest(worldEnd[0] - worldStart[0], width), worldStart[1] + shortest(worldEnd[1] - worldStart[1], height)];
+      start = metrics.world ? worldStart : toLocal(worldStart);
+      end = metrics.world ? target : toLocal(target);
+    }
+    const strokeWidth = layer.linkWidth * (metrics.world ? scale : 1);
+    out.push(`<path data-cell-link="${esc(`${from}|${to}`)}" d="M${xy(...start)}L${xy(...end)}" fill="none" stroke="${layer.color}" stroke-width="${fmt(strokeWidth)}" pointer-events="none"/>`);
+    if (doc.seamless) {
+      const bounds = metrics.bounds ?? emptyBounds();
+      includeBounds(bounds, start[0], start[1], strokeWidth / 2);
+      includeBounds(bounds, end[0], end[1], strokeWidth / 2);
+      metrics.bounds = bounds;
+    }
+  }
+  return out.join('');
+}
 function dash(p, dotted = false) { return p.lineStyle === 'dashed' ? `stroke-dasharray="${fmt(p.dashLength)} ${fmt(p.dashGap)}"` : p.lineStyle === 'dotted' || dotted ? `stroke-dasharray="1 ${fmt(p.dashGap || p.spacing)}" stroke-linecap="round"` : ''; }
 function rng(seed) { let s = seed >>> 0; return () => { s += 0x6D2B79F5; let t=s; t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; }; }
 function hashSeed(seed, id) { let h=seed>>>0; for (const c of id) h=Math.imul(h^c.charCodeAt(0),16777619); return h>>>0; }
@@ -231,7 +287,7 @@ function seamlessPoints(layer,doc,preview,metrics) {
   const period=periodicCells({width:w,height:h,u,v,angle,scale:layer.scale,maxCells:type==='dots'&&p.finite?6400:600}),bounds=emptyBounds(),out=[];
   const radiusLimit=period.spacing*.5-Math.min(period.spacing*.1,Math.max(1.5,period.spacing*.02));
   for(const [i,cell] of period.cells.entries()){
-    const {x,y,row,col}=cell,id=`${row}:${col}`,isHidden=hidden.has(id);if(isHidden&&!preview)continue;
+    const {x,y,row,col}=cell,id=`${row}:${col}`,isHidden=hidden.has(id);if(type==='dots')registerCellCenter(metrics,id,x,y,isHidden);if(isHidden&&!preview)continue;
     let content='',radius,rotation=layer.rotation;
     if(type==='symbols'){
       if(p.arrangement==='focus')rotation=Math.atan2(h/2-y,w/2-x)*180/Math.PI;
@@ -336,7 +392,7 @@ function renderPattern(layer, doc, preview, metrics = {}) {
     for(let i=-count;i<=count;i++){let x=cx+i*gap*(-sa),y=cy+i*gap*ca;const ux=ca,uy=sa,L0=extent*1.5;let extra=p.direction==='dotted'?`stroke-dasharray="1 ${fmt(p.dashGap||gap)}" stroke-linecap="round"`:(p.dashGap>0?`stroke-dasharray="${fmt(p.dashLength)} ${fmt(p.dashGap)}"`:'');add(line(x-ux*L0,y-uy*L0,x+ux*L0,y+uy*L0,c,p.strokeWidth,extra));}
   } else if(type==='dots') {
     let gap=capStep(p.spacing,w,h,3500);let cols=p.finite?p.columns:Math.max(1,Math.round(w/gap)),rows=p.finite?p.rows:Math.max(1,Math.round(h/gap));const xgap=p.finite?w/cols:gap,ygap=p.finite?h/rows:gap;
-    for(let r=0;r<rows;r++)for(let col=0;col<cols;col++){let x=(col+.5)*xgap,y=(r+.5)*ygap;if(p.arrangement==='staggered')x+=(r%2)*xgap/2;if(p.arrangement==='diagonal'){x+=(r-col)*xgap*.25;y+=(r+col)*ygap*.25;}if(layer.customMotif){const id=`${r}:${col}`,isHidden=hidden.has(id);if(isHidden&&!preview)continue;add(motifImage(layer,preview,id,x,y,p.size/2,isHidden));}else add(cellDraw(layer,preview,hidden,r,col,p.shape,x,y,p.size/2,c,'none',0));}
+    for(let r=0;r<rows;r++)for(let col=0;col<cols;col++){let x=(col+.5)*xgap,y=(r+.5)*ygap;if(p.arrangement==='staggered')x+=(r%2)*xgap/2;if(p.arrangement==='diagonal'){x+=(r-col)*xgap*.25;y+=(r+col)*ygap*.25;}const id=`${r}:${col}`,isHidden=hidden.has(id);registerCellCenter(metrics,id,x,y,isHidden);if(layer.customMotif){if(isHidden&&!preview)continue;add(motifImage(layer,preview,id,x,y,p.size/2,isHidden));}else add(cellDraw(layer,preview,hidden,r,col,p.shape,x,y,p.size/2,c,'none',0));}
   } else if(type==='polygons') {
     const size=doc.seamless?Math.max(p.cellSize,Math.sqrt(w*h/350)/layer.scale):capStep(p.cellSize,w,h,2400),hex=p.shape==='hexagon',triHeight=size*Math.sqrt(3)/2,hexX=triHeight,hexY=size*.75;
     const maxCells=p.showGrid?6400:6500,cells=[],edges=new Map();
@@ -374,7 +430,7 @@ function renderPattern(layer, doc, preview, metrics = {}) {
       if(records.length){
         const minRow=Math.min(...records.map(cell=>cell.rowIndex)),minCol=Math.min(...records.map(cell=>cell.colIndex)),rowBase=minRow<0?-minRow:1,colBase=minCol<0?-minCol:1;
         for(const record of records){
-          record.cellId=`${record.rowIndex+rowBase}:${record.colIndex+colBase}`;record.isHidden=hidden.has(record.cellId);
+          record.cellId=`${record.rowIndex+rowBase}:${record.colIndex+colBase}`;record.isHidden=hidden.has(record.cellId);registerCellCenter(metrics,record.cellId,record.center[0],record.center[1],record.isHidden);
           if(p.showGrid)for(let i=0;i<record.base.length;i++){
             const aw=toWorld(record.base[i]),bw=toWorld(record.base[(i+1)%record.base.length]),mx=(aw[0]+bw[0])/2,my=(aw[1]+bw[1])/2,dx=-Math.floor((mx+1e-7)/w)*w,dy=-Math.floor((my+1e-7)/h)*h;
             const a=toLocal([aw[0]+dx,aw[1]+dy]),b=toLocal([bw[0]+dx,bw[1]+dy]),key=edgeKey(a,b);
@@ -391,6 +447,7 @@ function renderPattern(layer, doc, preview, metrics = {}) {
         if(hex){const x=col*hexX+(r&1)*hexX*.5+hexX*.5,y=r*hexY+size*.5;base=Array.from({length:6},(_,i)=>[x+Math.cos(-Math.PI/2+i*Math.PI/3)*size*.5,y+Math.sin(-Math.PI/2+i*Math.PI/3)*size*.5]);}
         else{const x=col*size*.5+(r&1)*size*.5,y=r*triHeight;base=(col&1)?[[x+size*.5,y],[x,y+triHeight],[x+size,y+triHeight]]:[[x,y],[x+size,y],[x+size*.5,y+triHeight]];}
         const center=base.reduce((sum,point)=>[sum[0]+point[0]/base.length,sum[1]+point[1]/base.length],[0,0]),inradius=Math.min(...base.map(([x,y],i)=>{const [nx,ny]=base[(i+1)%base.length];return Math.abs((nx-x)*(center[1]-y)-(ny-y)*(center[0]-x))/Math.hypot(nx-x,ny-y); })),points=base.map(([x,y])=>[center[0]+(x-center[0])*p.shapeScale,center[1]+(y-center[1])*p.shapeScale]);
+        registerCellCenter(metrics,cellId,center[0],center[1],isHidden);
         if(p.showGrid)for(let i=0;i<base.length;i++){const a=base[i],b=base[(i+1)%base.length],key=edgeKey(a,b);if(!edges.has(key))edges.set(key,`M${xy(...a)}L${xy(...b)}`);}
         if(!isHidden||preview)cells.push({cellId,isHidden,points,center,inradius:inradius*p.shapeScale});
         if(cells.length>=maxCells)break cellLoop;
@@ -462,10 +519,15 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
   const sources=new Map(),copyRanges=new Map();
   for(const original of visible){
     const layer=fitSeamlessMotif(original,doc);
-    const metrics={},content=renderPattern(layer,doc,preview,metrics);if(!content)continue;
+    const metrics={};let content=renderPattern(layer,doc,preview,metrics);if(!content)continue;
+    content+=renderCellLinks(layer,doc,metrics);
     const renderedLayer=metrics.world?{...layer,rotation:0,scale:1}:layer;
     const cx=W/2,cy=H/2,range=doc.seamless?seamlessCopyRange(renderedLayer,doc,metrics.bounds):{x0:0,x1:0,y0:0,y1:0,ox:layer.offsetX,oy:layer.offsetY},transform=`translate(${fmt(range.ox)} ${fmt(range.oy)}) translate(${fmt(cx)} ${fmt(cy)}) rotate(${fmt(renderedLayer.rotation)}) scale(${transformNumber(renderedLayer.scale)}) translate(${fmt(-cx)} ${fmt(-cy)})`,source=`source-${layer.id}`;
-    if(layer.customMotif&&content.includes(`href="#motif-${layer.id}"`))parts.push(`<symbol id="motif-${esc(layer.id)}" viewBox="0 0 1 1"><image href="${esc(layer.customMotif)}" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid meet"/></symbol>`);
+    if(layer.customMotif&&content.includes(`href="#motif-${layer.id}"`)){
+      const motif=`motif-${esc(layer.id)}`,image=`<image href="${esc(layer.customMotif)}" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid meet"/>`;
+      if(layer.motifTint){const mask=`motif-alpha-${esc(layer.id)}`;parts.push(`<mask id="${mask}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="1" height="1" mask-type="alpha">${image}</mask><symbol id="${motif}" viewBox="0 0 1 1"><rect x="0" y="0" width="1" height="1" fill="${layer.color}" mask="url(#${mask})"/></symbol>`);}
+      else parts.push(`<symbol id="${motif}" viewBox="0 0 1 1">${image}</symbol>`);
+    }
     if(layer.mask){
       const maskTransform=metrics.world?` transform="translate(${fmt(cx)} ${fmt(cy)}) rotate(${fmt(layer.rotation)}) scale(${fmt(layer.scale)}) translate(${fmt(-cx)} ${fmt(-cy)})"`:'';
       const extent=Math.hypot(cx,cy)*Math.max(1,layer.scale);

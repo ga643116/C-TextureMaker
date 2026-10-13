@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addShape, MAX_LIBRARY_BYTES, MAX_SHAPES, normalizeShapeLibrary, removeShape } from '../app/shape-library.mjs';
+import { addShape, MAX_LIBRARY_BYTES, MAX_SHAPES, normalizeShapeLibrary, removeShape, renameShape } from '../app/shape-library.mjs';
 
 const svgData = value => `data:image/svg+xml;base64,${Buffer.from(value).toString('base64')}`;
 const shape = (id, data = svgData(`<svg xmlns="http://www.w3.org/2000/svg"><path d="M${id.length} 0 L1 1"/></svg>`), name = id) => ({ id, name, data });
@@ -27,6 +27,20 @@ test('adding duplicate data reuses the existing shape without mutating the input
   assert.equal(result.shape.id, 'first');
   assert.deepEqual(original, [first]);
   assert.notEqual(result.library, original);
+});
+
+test('renaming a shared shape preserves its identity, artwork and other library records', () => {
+  const library = [shape('first'), shape('second')];
+  const renamed = renameShape(library, 'first', '  我的形狀 / My shape / マイ形状  ');
+  assert.equal(renamed[0].name, '我的形狀 / My shape / マイ形状');
+  assert.equal(renamed[0].id, library[0].id);
+  assert.equal(renamed[0].data, library[0].data);
+  assert.deepEqual(renamed[1], library[1]);
+  assert.equal(library[0].name, 'first');
+  for (const name of ['', '   ', 'a'.repeat(81), 'Bad\nname']) {
+    assert.throws(() => renameShape(library, 'first', name), /Invalid shape name/);
+  }
+  assert.throws(() => renameShape(library, 'missing', 'Name'), /Shape not found/);
 });
 
 test('shape count capacity fails explicitly and preserves every existing shape', () => {

@@ -83,6 +83,13 @@ export function normalizeShapeLibrary(value) {
   return library;
 }
 
+export function renameShape(library, id, name) {
+  assert(typeof name === 'string' && name.trim().length > 0, 'Invalid shape name');
+  const normalized = normalizeShapeLibrary(library);
+  assert(normalized.some(shape => shape.id === id), 'Shape not found');
+  return normalizeShapeLibrary(normalized.map(shape => shape.id === id ? {...shape, name: name.trim()} : shape));
+}
+
 export function addShape(library, value) {
   const current = normalizeShapeLibrary(library);
   const shape = normalizeShape(value);

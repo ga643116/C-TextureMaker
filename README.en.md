@@ -6,7 +6,7 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 
 **v1.0.2 public preview** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.0.2/C-TextureMaker-1.0.2-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.0.2) · [Source](https://github.com/ga643116/C-TextureMaker)
 
-The main branch is now **1.1.0**; the public download above remains **v1.0.2**.
+The main branch is now **1.2.0**; the public download above remains **v1.0.2**.
 
 ![Workspace in Traditional Chinese with the dark theme](docs/media/workspace-zh-dark.png)
 
@@ -33,7 +33,9 @@ The main branch is now **1.1.0**; the public download above remains **v1.0.2**.
 - Adjust shape, color, rotation, scale, and position live. Use layers, presets, undo/redo, and .ctm projects. Projects support up to 16 layers; work and preferences are saved locally.
 - Seamless mode arranges patterns to the canvas tile period. The 3 × 3 preview helps inspect seams; exports remain a single tile.
 - Separate cursor and hand tools; hold Space and drag to pan temporarily. Dot and polygon cells support adjustable paint/erase brushes with one undo per stroke.
-- A shared PNG/SVG library works across halftone, dots, polygon lattices and symbols. Base grid and diagonal lines have independent dash settings.
+- Rename shared PNG/SVG shapes and reuse them across halftone, dots, polygon lattices and symbols. Each layer can keep the original colors or tint with its primary color while preserving transparency.
+- Connect dot or polygon cells with adjustable-width lines that appear in exports. Image to cells provides automatic/manual thresholds, inversion and fit previews; results remain editable with brushes and undo.
+- Base grid and diagonal lines have independent dash settings.
 - Traditional Chinese, English, and Japanese interfaces, with dark and light themes.
 
 ## Download and launch
@@ -48,7 +50,11 @@ Requirements: Windows x64, .NET Framework 4.7.2 or later, and the Microsoft Edge
 
 Canvas dimensions range from 128 to 4096 px per side. PNG supports transparent or solid backgrounds and 1×, 2×, and 4× scale. Output is limited to an 8192 px longest edge and 32 MP total; both limits apply.
 
-Procedural patterns export as vector SVG. Imported PNGs are embedded as raster images, so an SVG containing an imported PNG is not fully vector. Halftone, dots, polygon lattices and symbols share imported PNG/SVG shapes, preserving their original colors and transparency. The local library holds up to 40 shapes and 32 MiB in total, with a 4 MiB limit per file. Applied shapes are embedded in projects and survive library removal. Halftone also supports alpha masks. Decorative barcodes are not intended for scanning.
+Procedural patterns export as vector SVG. Imported PNGs are embedded as raster images, so an SVG containing an imported PNG is not fully vector. Halftone, dots, polygon lattices and symbols share imported PNG/SVG shapes, keeping original colors or tinting with the layer's primary color while preserving transparency. The local library holds up to 40 shapes and 32 MiB in total, with a 4 MiB limit per file. Applied shapes are embedded in projects and survive library removal. Halftone also supports alpha masks. Decorative barcodes are not intended for scanning.
+
+Image to cells accepts PNG/JPG/WebP (up to 16 MiB) or SVG (up to 4 MiB), up to 8192 px per side. Choose Dots or Polygon lattice, then open Image to cells under Edit cells. Dark areas are kept by default; transparent areas stay empty. The result is editable cell state, and the source image is not included in exports. To remove a connection, connect the same two cells again. Esc cancels the start point.
+
+1.2.0 opens older .ctm projects. Open new projects with tint or connections in 1.2.0 or later.
 
 ## Build from source
 
