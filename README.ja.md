@@ -4,9 +4,9 @@
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.0.2 公開プレビュー** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.0.2/C-TextureMaker-1.0.2-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.0.2) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
+**v1.3.0 公開プレビュー** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.3.0/C-TextureMaker-1.3.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.3.0) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
 
-main ブランチは **1.3.0** です。上記の公開ダウンロードは引き続き **v1.0.2** です。
+[1.3.0 の主な変更点](docs/releases/v1.3.0.md#日本語)
 
 ![繁体字中国語・ダークテーマのワークスペース](docs/media/workspace-zh-dark.png)
 
@@ -40,7 +40,7 @@ main ブランチは **1.3.0** です。上記の公開ダウンロードは引�
 
 ## ダウンロードと起動
 
-1. [C-TextureMaker-1.0.2-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.0.2/C-TextureMaker-1.0.2-win-x64.zip) をダウンロードし、全体を展開します。
+1. [C-TextureMaker-1.3.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.3.0/C-TextureMaker-1.3.0-win-x64.zip) をダウンロードし、全体を展開します。
 2. C-TextureMaker.exe を起動します。app フォルダーと DLL は隣に残してください。
 3. 書き込み可能な場所にフォルダー全体を置くと、隣接する data フォルダーに作業と設定を保存できます。
 

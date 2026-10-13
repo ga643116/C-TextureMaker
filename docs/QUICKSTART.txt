@@ -1,5 +1,5 @@
 C-TextureMaker 1.3.0 — Quick Start
-開發預覽 | Development preview | 開発プレビュー
+公開預覽 | Public preview | 公開プレビュー
 
 已公開版本 / Published downloads / 公開済みバージョン:
 https://github.com/ga643116/C-TextureMaker/releases
