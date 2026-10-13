@@ -1,0 +1,39 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<html lang="zh-Hant"><meta charset="utf-8"><title>C-TextureMaker 出圖驗證</title>
+<style>body{font:15px/1.6 system-ui;margin:32px;background:#f6f6f2;color:#252923}button{padding:10px 20px}td,th{padding:8px 14px;text-align:left;border-bottom:1px solid #ddd}canvas{max-width:220px;border:1px solid #ddd;margin:8px}pre{white-space:pre-wrap}.pass{color:#366422}.fail{color:#b22626}</style>
+<h1>C-TextureMaker 出圖驗證</h1><p>使用瀏覽器實際 PNG 渲染，核對透明度與跨邊界圖形；這個頁面不包含在成品中。</p>
+<button id="run">執行驗證</button><p id="status">尚未執行</p><table><thead><tr><th>圖樣</th><th>結果</th><th>邊界平均差</th><th>大於 8 的差異比例</th></tr></thead><tbody id="results"></tbody></table><pre id="error"></pre>
+<script type="module">
+import {PATTERNS,createDocument,createLayer,renderSVG} from '../app/engine.mjs?qa=1';
+const alpha=(image,x,y)=>image.data[(y*image.width+x)*4+3];
+async function raster(svg){const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));try{const img=new Image();img.src=url;await img.decode();const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!blob||blob.size<100)throw new Error('PNG encoding failed');return ctx.getImageData(0,0,canvas.width,canvas.height);}finally{URL.revokeObjectURL(url);}}
+async function periodicEdges(doc){
+ const w=doc.width,h=doc.height,g=5,sheet=renderSVG(doc,{repeat:3}),xml=new DOMParser().parseFromString(sheet,'image/svg+xml'),defs=xml.documentElement.querySelector('defs').innerHTML,source=xml.querySelector('#source-qa').outerHTML.replace(' id="source-qa"',''),copies=[];
+ const extent=doc.layers[0].type==='lines'?8:4;for(let y=-extent;y<=extent;y++)for(let x=-extent;x<=extent;x++)copies.push(`<g transform="translate(${x*w} ${y*h})">${source}</g>`);
+ const reference=await raster(`<svg xmlns="http://www.w3.org/2000/svg" width="${w+2*g}" height="${h+2*g}" viewBox="${-g} ${-g} ${w+2*g} ${h+2*g}"><defs>${defs}</defs>${copies.join('')}</svg>`),tile=await raster(renderSVG(doc));
+ let delta=0,visible=0,samples=0,large=0;
+ for(let y=-g;y<h+g;y++)for(let x=-g;x<w+g;x++){
+  if(x>=g&&x<w-g&&y>=g&&y<h-g)continue;
+  const a=alpha(tile,((x%w)+w)%w,((y%h)+h)%h),b=alpha(reference,x+g,y+g),diff=Math.abs(a-b);delta+=diff;samples++;if(diff>8)large++;if(a>0||b>0)visible++;
+ }
+ return{mean:delta/samples,fraction:large/samples,visible};
+}
+document.querySelector('#run').onclick=async e=>{
+ e.target.disabled=true;document.querySelector('#results').innerHTML='';document.querySelector('#error').textContent='';let passed=0,failed=0;
+ const record=(name,ok,metrics={})=>{document.querySelector('#results').insertAdjacentHTML('beforeend',`<tr><td>${name}</td><td class="${ok?'pass':'fail'}">${ok?'PASS':'FAIL'}</td><td>${metrics.mean?.toFixed(4)??'—'}</td><td>${metrics.fraction?.toFixed(4)??'—'}</td></tr>`);ok?passed++:failed++;};
+ try{
+  for(const p of PATTERNS){
+   document.querySelector('#status').textContent=`正在驗證 ${p.name.zh}`;
+   const d=createDocument();d.width=384;d.height=256;d.seamless=true;d.layers=[createLayer(p.id,'qa')];Object.assign(d.layers[0],{rotation:23,scale:1.35,offsetX:179,offsetY:-111});if(p.id==='grid')d.layers[0].params.hatch=true;
+   const result=await periodicEdges(d);record(p.name.zh,result.visible>50&&result.mean<5&&result.fraction<.22,result);
+  }
+  const control=createDocument();control.width=384;control.height=256;control.layers=[createLayer('concentric','qa')];control.layers[0].offsetX=117;
+  const negative=await periodicEdges(control);record('負對照：未環繞圖形必須被偵測',negative.mean>5&&negative.fraction>.22,negative);
+  const alphaDoc=createDocument();alphaDoc.width=alphaDoc.height=256;let png=await raster(renderSVG(alphaDoc));let empty=0;for(let i=3;i<png.data.length;i+=4)if(png.data[i]===0)empty++;record('透明 PNG',empty>1024);alphaDoc.transparent=false;png=await raster(renderSVG(alphaDoc));record('實色 PNG',png.data.every((v,i)=>i%4!==3||v===255));
+ }catch(error){failed++;document.querySelector('#error').textContent=error.stack||error.message||String(error);}
+ document.querySelector('#status').textContent=`完成：${passed} PASS / ${failed} FAIL`;document.documentElement.dataset.result=failed?'FAIL':'PASS';e.target.disabled=false;
+};
+</script></html>

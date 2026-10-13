@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "匯入驗證",
+  "width": 1024,
+  "height": 1024,
+  "transparent": true,
+  "background": "#eeeae2",
+  "seamless": false,
+  "seed": 42,
+  "layers": [
+    {
+      "id": "import-fixture",
+      "type": "halftone",
+      "visible": true,
+      "opacity": 1,
+      "color": "#222222",
+      "secondary": "#77736d",
+      "rotation": 0,
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "params": {
+        "spacing": 80,
+        "maxDot": 28,
+        "minDot": 6,
+        "gradient": "radial",
+        "wave": "sine",
+        "angle": 0,
+        "arrangement": "grid",
+        "shape": "circle",
+        "overallShape": "full"
+      },
+      "hiddenCells": [],
+      "customMotif": null,
+      "mask": null
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "name": "seamless-symbols-102",
+  "width": 1024,
+  "height": 1024,
+  "transparent": true,
+  "background": "#eeeae2",
+  "seamless": true,
+  "seed": 42,
+  "layers": [
+    {
+      "id": "example-symbols",
+      "type": "symbols",
+      "visible": true,
+      "opacity": 1,
+      "color": "#353535",
+      "secondary": "#999999",
+      "rotation": 0,
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "params": {
+        "shape": "arrow",
+        "arrangement": "uniform",
+        "size": 20,
+        "spacing": 72,
+        "strokeWidth": 2,
+        "roundness": 0.2,
+        "shorten": 0.1,
+        "filled": false
+      },
+      "hiddenCells": [],
+      "customMotif": null,
+      "mask": null
+    }
+  ]
+}

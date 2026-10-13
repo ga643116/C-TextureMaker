@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "Seamless Triangle Rotated 101",
+  "width": 384,
+  "height": 256,
+  "transparent": true,
+  "background": "#eeeae2",
+  "seamless": true,
+  "seed": 42,
+  "layers": [
+    {
+      "id": "seamless-triangle-rotated-101",
+      "type": "polygons",
+      "visible": true,
+      "opacity": 1,
+      "color": "#e9e6df",
+      "secondary": "#77736d",
+      "rotation": 23,
+      "scale": 1.35,
+      "offsetX": 0,
+      "offsetY": 0,
+      "params": {
+        "shape": "triangle",
+        "cellSize": 101,
+        "shapeScale": 0.85,
+        "filled": false,
+        "strokeWidth": 2,
+        "showGrid": true
+      },
+      "hiddenCells": [],
+      "customMotif": null,
+      "mask": null
+    }
+  ]
+}

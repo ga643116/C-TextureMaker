@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "Seamless Triangle 101",
+  "width": 1024,
+  "height": 1024,
+  "transparent": true,
+  "background": "#eeeae2",
+  "seamless": true,
+  "seed": 42,
+  "layers": [
+    {
+      "id": "seamless-triangle-101",
+      "type": "polygons",
+      "visible": true,
+      "opacity": 1,
+      "color": "#e9e6df",
+      "secondary": "#77736d",
+      "rotation": 0,
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "params": {
+        "shape": "triangle",
+        "cellSize": 56,
+        "shapeScale": 0.85,
+        "filled": false,
+        "strokeWidth": 2,
+        "showGrid": true
+      },
+      "hiddenCells": [],
+      "customMotif": null,
+      "mask": null
+    }
+  ]
+}

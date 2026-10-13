@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "未命名圖樣",
+  "width": 1024,
+  "height": 1024,
+  "transparent": true,
+  "background": "#eeeae2",
+  "seamless": false,
+  "seed": 42,
+  "layers": [
+    {
+      "id": "layer-1",
+      "type": "contour",
+      "visible": true,
+      "opacity": 1,
+      "color": "#35392f",
+      "secondary": "#9da58f",
+      "rotation": 0,
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "params": {
+        "peaks": 3,
+        "terrainScale": 1.75,
+        "sampling": 72,
+        "levels": 18,
+        "octaves": 4,
+        "roughness": 0.65,
+        "strokeWidth": 1.5
+      },
+      "hiddenCells": [],
+      "customMotif": null,
+      "mask": null
+    }
+  ]
+}

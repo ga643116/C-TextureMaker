@@ -1,0 +1,16 @@
+C-TextureMaker 1.0.2 — 第三方元件與授權
+
+本專案自有程式原始碼依 MPL-2.0 授權，範圍見 LICENSE-SCOPE.md；下列第三方元件不由 MPL 重新授權，並保留各自原有條款。
+
+Transitions.dev UI Generation
+Copyright Jakub Antalik / Transitions.dev.
+Source: https://github.com/Jakubantalik/transitions.dev/tree/main/skills/transitions-ui-generation
+Project use follows the independent terms reproduced in app/vendor/LICENSE.txt. Those terms prohibit repackaging, reselling, or publishing the collection or a substantial part as a competing transitions library, motion pack, or animation kit. This application integrates the transitions into an end-user design tool.
+
+Microsoft.Web.WebView2 SDK 1.0.4258.31
+Copyright Microsoft Corporation.
+Original license is included as LICENSE-WebView2.txt in the portable application folder.
+The installed Microsoft Edge WebView2 Runtime is a separate system component and is not bundled.
+
+Developer-only packages: esbuild, @resvg/resvg-js and pngjs.
+These packages are used to build and test the source and are not shipped as runtime dependencies in the portable package.

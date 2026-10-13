@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<html lang="zh-Hant" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'">
+  <title>C-TextureMaker</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="vendor/ui-generation.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="dialog-root"></div>
+  <input id="file-project" type="file" accept=".ctm,.json" hidden>
+  <input id="file-image" type="file" accept="image/png,image/svg+xml" hidden>
+  <script src="bundle.js" defer></script>
+</body>
+</html>

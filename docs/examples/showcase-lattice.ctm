@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "Lattice study 001",
+  "width": 1024,
+  "height": 1024,
+  "transparent": false,
+  "background": "#f3f3ee",
+  "seamless": false,
+  "seed": 1,
+  "layers": [
+    {
+      "id": "demo-lattice",
+      "type": "polygons",
+      "visible": true,
+      "opacity": 1,
+      "color": "#202124",
+      "secondary": "#b2b2ac",
+      "rotation": 0,
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "params": {
+        "shape": "triangle",
+        "cellSize": 104,
+        "shapeScale": 0.78,
+        "filled": false,
+        "strokeWidth": 3,
+        "showGrid": false
+      },
+      "hiddenCells": [],
+      "customMotif": null,
+      "mask": null
+    }
+  ]
+}

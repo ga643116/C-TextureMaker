@@ -1,0 +1,43 @@
+# Build and package outputs
+/node_modules/
+/.npm-cache/
+/dist/
+/release/
+/desktop/vendor-cache/
+/desktop/build-staging/
+/app/bundle.js
+
+# Application data and runtime caches
+/data/
+/desktop/data/
+**/data/
+**/.cache/
+**/cache/
+**/Cache/
+**/caches/
+**/Caches/
+**/cache-*/
+**/cache_*/
+
+# Local tooling and publishing state
+/.tools/
+**/.tools/
+/.publish/
+**/.publish/
+
+# Temporary frame extraction at the repository media root
+/media/frames/
+/media/tmp-frames/
+/media/tmp_frames/
+
+# Internal work-history documents
+/docs/RESEARCH.md
+/docs/VALIDATION.md
+
+# Historical raster diagnostics (not reusable test inputs)
+/tests/contour-sample.png
+/tests/contour-sample.svg
+
+# Python caches
+__pycache__/
+*.py[cod]

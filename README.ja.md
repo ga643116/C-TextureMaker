@@ -1,0 +1,67 @@
+# C-TextureMaker
+
+15 種類の調整可能なプロシージャルパターンから、透明・シームレス対応素材を作成して SVG／PNG に書き出す、オフライン Windows 向けパターンスタジオです。
+
+[繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
+
+**v1.0.2 公開プレビュー** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.0.2/C-TextureMaker-1.0.2-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.0.2) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
+
+![繁体字中国語・ダークテーマのワークスペース](docs/media/workspace-zh-dark.png)
+
+<details>
+<summary>その他のワークスペース画面</summary>
+
+![英語・ライトテーマのワークスペース](docs/media/workspace-en-light.png)
+
+![日本語の書き出しパネル](docs/media/export-ja.png)
+
+</details>
+
+**等高線の生成** — 設定したパラメーターから等高線が生成される様子です。
+
+![等高線生成のアニメーション](docs/media/generation-contours.gif)
+
+**シームレス書き出し** — 1 枚のタイルと、そのシームレスな反復を確認できます。
+
+![シームレス書き出しのアニメーション](docs/media/seamless-export.gif)
+
+## 機能
+
+- 15 種類のパターン：同心円弧、ハーフトーンドット、HUD ゲージ、円形目盛り、装飾バーコード、波線、平行線、ドットグリッド、多角形グリッド、等高線、シンボル配列、入れ子多角形、地球儀、エンジニアリンググリッド、放射光線。
+- 形状、色、回転、拡大縮小、位置をリアルタイム調整。レイヤー、プリセット、元に戻す／やり直し、.ctm プロジェクトに対応します。最大 16 レイヤーを使用でき、作業と設定はローカルに自動保存されます。
+- シームレスモードはキャンバス周期に合わせて配置します。3 × 3 プレビューで継ぎ目を確認でき、書き出しは 1 タイルです。
+- 繁体字中国語、英語、日本語の UI と、ダーク／ライトテーマを用意しています。
+
+## ダウンロードと起動
+
+1. [C-TextureMaker-1.0.2-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.0.2/C-TextureMaker-1.0.2-win-x64.zip) をダウンロードし、全体を展開します。
+2. C-TextureMaker.exe を起動します。app フォルダーと DLL は隣に残してください。
+3. 書き込み可能な場所にフォルダー全体を置くと、隣接する data フォルダーに作業と設定を保存できます。
+
+必要環境は Windows x64、.NET Framework 4.7.2 以降、システムにインストール済みの Microsoft Edge WebView2 Runtime です。オフラインで動作し、Node.js、Python、アカウント、開発サーバーは不要です。システムコンポーネントのインストールや更新は行いません。終了前にステータスバーの「自動保存済み」を確認してください。デザインの移動やバックアップには .ctm プロジェクトを別途保存してください。
+
+## パターンと書き出し
+
+キャンバスは各辺 128～4096 px。PNG は透明または単色背景、1×・2×・4×に対応します。出力上限は長辺 8192 px、総画素数 32 MP で、両方の制限が適用されます。
+
+プロシージャルパターンはベクター SVG として書き出されます。読み込んだ PNG はラスター画像として SVG に埋め込まれるため、その SVG は完全なベクターではありません。ハーフトーンでは PNG／SVG を形状に、透明 PNG をマスクに使用できます。入力ファイルは 1 件 4 MiB までです。装飾バーコードはスキャン用途ではありません。
+
+## ソースからビルド
+
+ビルドには Node.js/npm と Python が必要です。以下のコマンドで依存関係をインストールし、自動テスト、フロントエンドと Windows デスクトップ版のビルド、パッケージ作成を行います。
+
+    npm ci
+    npm test
+    npm run build
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\build-desktop.ps1
+    python scripts/package.py
+
+デスクトップ版の初回ビルド時、固定バージョンの WebView2 SDK を NuGet から取得します。配布アプリの実行にビルドツールや開発サーバーは不要です。
+
+## ライセンスとクレジット
+
+本プロジェクト独自のソースコードは [MPL-2.0](https://www.mozilla.org/MPL/2.0/) です。適用範囲は [LICENSE-SCOPE.md](LICENSE-SCOPE.md) を参照してください。商用利用が可能です。MPL 対象ファイルを変更して配布する場合、その変更済みファイルのソースコードを MPL-2.0 で提供する必要があります。全文は [LICENSE](LICENSE) をご覧ください。
+
+Transitions.dev のアニメーションと Microsoft WebView2 コンポーネントには各自の条件が適用され、製品全体を MPL-2.0 のみで提供するものではありません。[第三者ライセンス表示](THIRD-PARTY-NOTICES.txt)、[Transitions.dev のライセンス](app/vendor/LICENSE.txt)、ポータブル版の LICENSE-WebView2.txt を参照してください。
+
+パターンのワークフローは [rahoo 素材生成](https://rahoo.online/) を参考にしています。この実装は同サイトのコードや画像素材を複製していません。起動時の生成アニメーションは [Transitions.dev 公式ソース](https://github.com/Jakubantalik/transitions.dev/tree/main/skills/transitions-ui-generation) に基づきます。

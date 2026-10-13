@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "Contour study 042",
+  "width": 1024,
+  "height": 1024,
+  "transparent": false,
+  "background": "#202124",
+  "seamless": true,
+  "seed": 42,
+  "layers": [
+    {
+      "id": "layer-1",
+      "type": "contour",
+      "visible": true,
+      "opacity": 1,
+      "color": "#eeeef0",
+      "secondary": "#eeeef0",
+      "rotation": 0,
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "params": {
+        "peaks": 2,
+        "terrainScale": 1.25,
+        "sampling": 144,
+        "levels": 18,
+        "octaves": 3,
+        "roughness": 0.55,
+        "strokeWidth": 2
+      },
+      "hiddenCells": [],
+      "customMotif": null,
+      "mask": null
+    }
+  ]
+}
