@@ -28,3 +28,34 @@ select option{background:var(--panel);color:var(--ink)}
 #png-scale .select-wide:disabled{color:var(--muted);background:var(--hover);opacity:.65;cursor:not-allowed}
 .top-actions>button{flex-shrink:0}
 @media(max-width:760px){[data-desktop=true] .brand span{display:none}}
+
+/* Canvas tools, cell brushes, and the shared local shape library. */
+.artboard-label{left:50%;transform:translateX(-50%)}
+.zoom-controls [aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
+#viewport[data-canvas-tool=cursor],#viewport[data-canvas-tool=cursor] .artboard{cursor:default}
+#viewport[data-canvas-tool=cursor][data-cell-editing=true] .artboard{cursor:crosshair}
+#viewport[data-canvas-tool=hand],#viewport[data-canvas-tool=hand] .artboard{cursor:grab}
+#viewport.panning,#viewport.panning .artboard{cursor:grabbing}
+.brush-cursor{position:absolute;z-index:2;pointer-events:none;border:1px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #171717;transform:translate(-50%,-50%)}
+.brush-cursor[hidden]{display:none}
+.cell-edit-bar{max-width:calc(100% - 28px);flex-wrap:wrap;justify-content:flex-end;z-index:3}
+.brush-inline{display:inline-flex;align-items:center;gap:7px;padding-left:8px;border-left:1px solid var(--line);font-size:12px;font-weight:600}
+.brush-inline input{width:64px;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:4px 5px;font:500 12px Consolas,monospace}
+.parameter-group+.parameter-group{border-top:1px solid var(--line);margin-top:22px;padding-top:18px}
+.parameter-group h2{margin:0 0 16px;font-size:13px;font-weight:700;letter-spacing:.025em}
+.control-disabled{opacity:.55}.control-disabled input,.control-disabled select{cursor:default}
+.shape-library-launch{margin-top:9px;width:100%;font-size:12px}
+.shapes-modal{width:620px}
+.shape-library-actions,.shape-current-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.shape-library-actions .mono{margin-left:auto;color:var(--muted)}
+.shape-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0}
+.shape-card{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.shape-apply{display:flex;flex-direction:column;width:100%;padding:0;gap:0;border:0;align-items:stretch;text-align:left}
+.shape-preview{height:108px;padding:16px;display:flex;align-items:center;justify-content:center;background-color:var(--checker1);background-image:conic-gradient(var(--checker2) 25%,transparent 0 50%,var(--checker2) 0 75%,transparent 0);background-size:16px 16px}
+.shape-preview img{max-width:100%;max-height:100%;object-fit:contain}
+.shape-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:10px 37px 10px 10px;font-size:12px;font-weight:600}
+.shape-card>.icon-btn{position:absolute;bottom:3px;right:3px;width:28px;height:28px;padding:6px}
+.shape-card.active .shape-name{background:var(--accent);color:var(--accent-ink)}
+.shape-card.active>.icon-btn{color:var(--accent-ink)}
+.shape-current-actions{border-top:1px solid var(--line);padding-top:16px}
+@media(max-width:950px){.zoom-controls{gap:1px;padding:4px}.zoom-controls .divider{margin:0 2px}.zoom-controls .icon-btn{width:28px}.zoom-controls .mono{min-width:40px}.stage-foot{padding-inline:8px}.shape-grid{gap:8px}}

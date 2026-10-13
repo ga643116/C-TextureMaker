@@ -6,6 +6,8 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 
 **v1.0.2 public preview** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.0.2/C-TextureMaker-1.0.2-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.0.2) · [Source](https://github.com/ga643116/C-TextureMaker)
 
+The main branch is now **1.1.0**; the public download above remains **v1.0.2**.
+
 ![Workspace in Traditional Chinese with the dark theme](docs/media/workspace-zh-dark.png)
 
 <details>
@@ -30,6 +32,8 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 - 15 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, symbol arrays, nested polygons, a globe, engineering grids, and radial beams.
 - Adjust shape, color, rotation, scale, and position live. Use layers, presets, undo/redo, and .ctm projects. Projects support up to 16 layers; work and preferences are saved locally.
 - Seamless mode arranges patterns to the canvas tile period. The 3 × 3 preview helps inspect seams; exports remain a single tile.
+- Separate cursor and hand tools; hold Space and drag to pan temporarily. Dot and polygon cells support adjustable paint/erase brushes with one undo per stroke.
+- A shared PNG/SVG library works across halftone, dots, polygon lattices and symbols. Base grid and diagonal lines have independent dash settings.
 - Traditional Chinese, English, and Japanese interfaces, with dark and light themes.
 
 ## Download and launch
@@ -44,7 +48,7 @@ Requirements: Windows x64, .NET Framework 4.7.2 or later, and the Microsoft Edge
 
 Canvas dimensions range from 128 to 4096 px per side. PNG supports transparent or solid backgrounds and 1×, 2×, and 4× scale. Output is limited to an 8192 px longest edge and 32 MP total; both limits apply.
 
-Procedural patterns export as vector SVG. Imported PNGs are embedded as raster images, so an SVG containing an imported PNG is not fully vector. Halftone patterns can use an imported PNG or SVG as a shape, or a transparent PNG as a mask. Each input file is limited to 4 MiB. Decorative barcodes are not intended for scanning.
+Procedural patterns export as vector SVG. Imported PNGs are embedded as raster images, so an SVG containing an imported PNG is not fully vector. Halftone, dots, polygon lattices and symbols share imported PNG/SVG shapes, preserving their original colors and transparency. The local library holds up to 40 shapes and 32 MiB in total, with a 4 MiB limit per file. Applied shapes are embedded in projects and survive library removal. Halftone also supports alpha masks. Decorative barcodes are not intended for scanning.
 
 ## Build from source
 
@@ -55,6 +59,8 @@ Builds require Node.js/npm and Python. These commands install development depend
     npm run build
     powershell -NoProfile -ExecutionPolicy Bypass -File .\build-desktop.ps1
     python scripts/package.py
+
+For browser interaction regression tests, install Playwright and Microsoft Edge, run `npm run build`, then `node tests/editor.browser.cjs`.
 
 On the first desktop build, the script downloads the pinned WebView2 SDK from NuGet. The packaged app does not need build tools or a development server.
 

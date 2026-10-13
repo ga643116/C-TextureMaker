@@ -90,3 +90,34 @@ test('successful writes replace legacy values and remain readable', async () => 
   assert.deepEqual(await storage.getRecord('autosave', null), next);
   assert.equal(localStorage.getItem('ctm.autosave'), null);
 });
+
+test('shape records persist independently without becoming legacy migration keys', async () => {
+  const legacyShapeLike = [{ id: 'old-local', name: 'Keep local key untouched', data: 'legacy' }];
+  const localStorage = new MemoryLocalStorage({
+    'ctm.shapes': encode(legacyShapeLike),
+    undefined: 'unrelated local value'
+  });
+  const database = memoryDatabase();
+  const storage = createStorage({ openDatabase: async () => database, localStorage });
+  const shapes = [{ id: 'shape-1', name: 'Circle', data: 'data:image/png;base64,AA==' }];
+
+  assert.equal(await storage.initialize(), true);
+  assert.deepEqual(await storage.getRecord('shapes', []), []);
+  assert.equal(database.records.has('shapes'), false);
+  assert.equal(localStorage.getItem('ctm.shapes'), encode(legacyShapeLike));
+  assert.equal(await storage.setRecord('shapes', shapes), true);
+  assert.deepEqual(await storage.getRecord('shapes', []), shapes);
+  assert.equal(localStorage.getItem('ctm.shapes'), encode(legacyShapeLike));
+  assert.equal(localStorage.getItem('undefined'), 'unrelated local value');
+  assert.equal(await storage.setRecord('unknown', []), false);
+  assert.deepEqual(await storage.getRecord('unknown', 'fallback'), 'fallback');
+});
+
+test('an unreadable shape library is not reported as empty', async () => {
+  const storage = createStorage({
+    openDatabase: async () => ({ async get() { throw new Error('read failed'); } }),
+    localStorage: new MemoryLocalStorage()
+  });
+  await assert.rejects(storage.getRecord('shapes', []), /read failed/);
+  assert.deepEqual(await storage.getRecord('autosave', null), null);
+});

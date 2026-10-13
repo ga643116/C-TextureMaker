@@ -6,6 +6,8 @@
 
 **v1.0.2 公開預覽** · [下載 Windows x64 便攜包](https://github.com/ga643116/C-TextureMaker/releases/download/v1.0.2/C-TextureMaker-1.0.2-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.0.2) · [原始碼](https://github.com/ga643116/C-TextureMaker)
 
+目前 main 原始碼為 **1.1.0**；上述公開下載仍為 **v1.0.2**。
+
 ![繁體中文深色主題工作區](docs/media/workspace-zh-dark.png)
 
 <details>
@@ -30,6 +32,8 @@
 - 15 種圖樣：同心圓弧、半色調網點、HUD 量表、環形刻度、裝飾條碼、波形線、平行線、格點、多邊形格網、等高線、符號陣列、巢狀多邊形、經緯球體、工程格線與放射光束。
 - 即時調整圖樣、色彩、旋轉、比例與位置；使用圖層、預設、復原／重做及 .ctm 專案。最多 16 個圖層；工作與偏好會自動保存在本機。
 - 無縫模式配合畫布週期排列圖樣；3 × 3 平鋪預覽檢查接縫，匯出仍是單格。
+- 一般游標與手形工具分工，空白鍵＋拖曳可暫時移動畫布；格點與多邊形單元支援可調直徑的繪製／擦除筆刷，每一筆可一次復原。
+- 共用 PNG／SVG 形狀庫適用於半色調、格點、多邊形格網與符號陣列；工程格線的主格線與對角線可分別設定虛線。
 - 繁體中文、English、日本語介面，以及深色／淺色主題。
 
 ## 下載與啟動
@@ -44,7 +48,7 @@
 
 畫布每邊可設為 128–4096 px。PNG 支援透明或實色背景及 1×、2×、4×；輸出上限為最長邊 8192 px、總像素 32 MP，兩項限制都會套用。
 
-程序式圖樣匯出為 SVG 向量；匯入的 PNG 會以嵌入點陣圖保留在 SVG 中，因此含 PNG 的 SVG 並非全向量。半色調圖樣可匯入 PNG 或 SVG 作為圖形，也可使用透明 PNG 作為遮罩；單張輸入上限 4 MiB。裝飾條碼不供掃描辨識。
+程序式圖樣匯出為 SVG 向量；匯入的 PNG 會以嵌入點陣圖保留在 SVG 中，因此含 PNG 的 SVG 並非全向量。半色調、格點、多邊形格網與符號陣列可從共用形狀庫套用 PNG／SVG，保留素材原色與透明度。形狀庫最多 40 個素材、合計 32 MiB，單張輸入上限 4 MiB；套用後嵌入專案，從庫中移除不會破壞既有圖樣。半色調另支援透明遮罩。裝飾條碼不供掃描辨識。
 
 ## 從原始碼建置
 
@@ -55,6 +59,8 @@
     npm run build
     powershell -NoProfile -ExecutionPolicy Bypass -File .\build-desktop.ps1
     python scripts/package.py
+
+瀏覽器互動回歸測試：安裝 Playwright 與 Microsoft Edge 後，執行 `node tests/editor.browser.cjs`（先執行 `npm run build`）。
 
 第一次桌面建置會從 NuGet 取得固定版本的 WebView2 SDK。執行成品不需要建置工具或開發伺服器。
 

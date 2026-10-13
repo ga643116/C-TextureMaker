@@ -153,7 +153,8 @@ function renderGrid(layer,doc) {
   }
   const dashAttr=p.lineStyle==='dashed'?` stroke-dasharray="${fmt(p.dashLength*scale)} ${fmt(p.dashGap*scale)}"`:'';
   content.push(strokePath(baseSegments.join(''),layer.color,strokeWidth,dashAttr));
-  if(diagonalSegments.length)content.push(strokePath(diagonalSegments.join(''),layer.secondary,diagonalWidth));
+  const diagonalDashAttr=p.diagonalStyle==='dashed'?`stroke-dasharray="${fmt(p.diagonalDashLength*scale)} ${fmt(p.diagonalDashGap*scale)}"`:'';
+  if(diagonalSegments.length)content.push(strokePath(diagonalSegments.join(''),layer.secondary,diagonalWidth,diagonalDashAttr));
   if(junctionSegments.length)content.push(strokePath(junctionSegments.join(''),layer.secondary,Math.min(p.junctionWidth*scale,minPitch*.08)));
   const primitives=cells.length*segmentsPerCell;
   const remaining=Math.max(0,MAX_PRIMITIVES-primitives-cornerCount),enabledFields=Number(hasDots)+Number(hasHatch),fieldLimit=enabledFields?Math.floor(remaining/enabledFields):0;

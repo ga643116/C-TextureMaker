@@ -6,6 +6,7 @@
 const DATABASE_NAME = 'c-texturemaker';
 const DATABASE_VERSION = 1;
 const OBJECT_STORE = 'records';
+const RECORD_KEYS = new Set(['autosave', 'presets', 'shapes']);
 const LEGACY_KEYS = { autosave: 'ctm.autosave', presets: 'ctm.presets' };
 
 function localStorageOrNull() {
@@ -76,8 +77,10 @@ function createDatabaseAdapter(database) {
 }
 
 function readLegacy(localStorage, key, fallback) {
+  const legacyKey = LEGACY_KEYS[key];
+  if (!legacyKey) return fallback;
   try {
-    const raw = localStorage?.getItem(LEGACY_KEYS[key]);
+    const raw = localStorage?.getItem(legacyKey);
     return raw === null || raw === undefined ? fallback : JSON.parse(raw);
   } catch {
     return fallback;
@@ -116,20 +119,26 @@ export function createStorage({
   }
 
   async function getRecord(key, fallback) {
+    if (!RECORD_KEYS.has(key)) return fallback;
     try {
       const value = await (await database()).get(key);
       if (value !== undefined) return value;
-    } catch {
+    } catch (error) {
+      // A library has no legacy fallback. A failed read must not look like an empty library.
+      if (key === 'shapes') throw error;
       // The legacy copy remains available when IndexedDB cannot be read.
     }
     return readLegacy(localStorage, key, fallback);
   }
 
   async function setRecord(key, value) {
-    if (!LEGACY_KEYS[key]) return false;
+    if (!RECORD_KEYS.has(key)) return false;
     try {
       await (await database()).put(key, value);
-      try { localStorage?.removeItem(LEGACY_KEYS[key]); } catch { /* The IndexedDB copy is already committed. */ }
+      const legacyKey = LEGACY_KEYS[key];
+      if (legacyKey) {
+        try { localStorage?.removeItem(legacyKey); } catch { /* The IndexedDB copy is already committed. */ }
+      }
       return true;
     } catch {
       return false;

@@ -8,6 +8,7 @@ import shutil
 import zipfile
 import hashlib
 import json
+import subprocess
 
 root = Path(__file__).resolve().parent.parent
 
@@ -63,6 +64,22 @@ def main():
     for name, path in additional_files.items():
         shutil.copy2(path, release / name)
         files.append(name)
+
+    # A clean checkout can name its exact source without creating a release tag.
+    try:
+        revision = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=root, text=True, timeout=10
+        ).strip()
+        dirty = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=root, text=True, timeout=10
+        ).strip()
+        if not dirty:
+            source_note = (release / "SOURCE.txt").read_text(encoding="utf-8")
+            source_note = source_note.replace("/tree/main", f"/tree/{revision}")
+            source_note = source_note.replace("/archive/refs/heads/main.zip", f"/archive/{revision}.zip")
+            (release / "SOURCE.txt").write_text(source_note, encoding="utf-8")
+    except (OSError, subprocess.SubprocessError):
+        pass  # Source archives retain the repository URL from SOURCE.txt.
 
     archive = output_root / f"C-TextureMaker-{version}-win-x64.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as package:

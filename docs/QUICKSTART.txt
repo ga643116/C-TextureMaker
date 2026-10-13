@@ -1,17 +1,19 @@
-C-TextureMaker 1.0.2 — Quick Start
-公開預覽 | Public preview | 公開プレビュー
+C-TextureMaker 1.1.0 — Quick Start
+開發預覽 | Development preview | 開発プレビュー
 
-下載 / Download / ダウンロード:
-https://github.com/ga643116/C-TextureMaker/releases/download/v1.0.2/C-TextureMaker-1.0.2-win-x64.zip
+已公開版本 / Published downloads / 公開済みバージョン:
+https://github.com/ga643116/C-TextureMaker/releases
 原始碼 / Public source / 公開ソース:
 https://github.com/ga643116/C-TextureMaker
 
 繁體中文
 --------
 解壓縮 ZIP 後，開啟 C-TextureMaker.exe。請保留同一資料夾內的 app 與 DLL，並將整個資料夾放在可寫入的位置。
+升級時先關閉舊版，再將舊版的 data 資料夾複製到新版程式旁，可延續自動存檔、偏好與形狀庫；也可直接開啟先前另存的 .ctm。
 需要 Windows x64、.NET Framework 4.7.2 或更新版本，以及系統已安裝的 Microsoft Edge WebView2 Runtime。成品離線執行，不需伺服器、帳號或 Node.js。
 左側選圖樣、右側調整參數；滾輪縮放，空白鍵＋拖曳移動畫布。無縫模式配合畫布週期排列；以 3 × 3 預覽檢查接縫，匯出仍是單格。
 PNG 可輸出透明或實色背景，最長邊上限 8192 px、總像素上限 32 MP。程序式圖形匯出為向量 SVG；匯入的 PNG 會以點陣圖嵌入 SVG。
+下方工具列可選一般游標或手形工具；格點／多邊形的繪製與擦除可調筆刷直徑，一筆一次復原。形狀選單旁的共用形狀庫支援 PNG／SVG（每個最多 4 MiB，合計 40 個／32 MiB），可跨半色調、格點、多邊形與符號使用。工程格線分組設定主格線、對角線虛線與留白。
 Ctrl+S 儲存 .ctm 專案，Ctrl+O 開啟，Ctrl+E 匯出；Ctrl+Z 復原，Ctrl+Shift+Z 或 Ctrl+Y 重做。
 工作與偏好保存在程式旁的 data 資料夾。關閉前確認狀態列顯示「已自動儲存」；搬移或備份設計時另存 .ctm 專案。
 本專案自有程式碼採 MPL-2.0；Transitions.dev 與 Microsoft WebView2 元件依各自授權條款使用。詳見 LICENSE、LICENSE-SCOPE.md、THIRD-PARTY-NOTICES.txt 與程式包內的 LICENSE-WebView2.txt。
@@ -19,9 +21,11 @@ Ctrl+S 儲存 .ctm 專案，Ctrl+O 開啟，Ctrl+E 匯出；Ctrl+Z 復原，Ctrl
 ENGLISH
 -------
 Extract the ZIP and open C-TextureMaker.exe. Keep the app folder and DLL files beside the executable, and place the whole folder somewhere writable.
+To upgrade, close the older version, then copy its data folder beside the new app to keep autosave, preferences and the shape library. Previously saved .ctm files can also be opened directly.
 Requirements: Windows x64, .NET Framework 4.7.2 or later, and the Microsoft Edge WebView2 Runtime installed on the system. The app runs offline; no server, account, or Node.js is needed.
 Choose a pattern on the left and adjust it on the right. Use the mouse wheel to zoom and Space+drag to pan. Seamless mode fits the pattern to the canvas period; use the 3 × 3 preview to inspect seams. Exports contain one tile.
 PNG supports transparent or solid backgrounds, up to an 8192 px longest edge and 32 MP total. Procedural shapes export as vector SVG; imported PNGs remain embedded raster images.
+Use the bottom toolbar to switch between cursor and hand tools. Dot/polygon paint and erase brushes have adjustable diameters and one undo per stroke. The shared shape library next to the shape menu accepts PNG/SVG (4 MiB per file, 40 shapes / 32 MiB total) across halftone, dots, polygons and symbols. Technical grid controls group base lines, independent diagonal dashes and gaps.
 Ctrl+S saves a .ctm project, Ctrl+O opens one, and Ctrl+E exports. Ctrl+Z undoes; Ctrl+Shift+Z or Ctrl+Y redoes.
 Work and preferences are saved in the data folder beside the app. Before closing, check that the status bar says “Autosaved.” Save a .ctm project separately when moving or backing up a design.
 The project’s own code is MPL-2.0. Transitions.dev and Microsoft WebView2 components retain their respective terms. See LICENSE, LICENSE-SCOPE.md, THIRD-PARTY-NOTICES.txt, and LICENSE-WebView2.txt in the portable package.
@@ -29,9 +33,11 @@ The project’s own code is MPL-2.0. Transitions.dev and Microsoft WebView2 comp
 日本語
 -------
 ZIP を展開して C-TextureMaker.exe を起動します。app フォルダーと DLL は実行ファイルの隣に残し、書き込み可能な場所に全体を置いてください。
+アップグレード時は旧版を終了し、data フォルダーを新版アプリの隣にコピーすると、自動保存・設定・形状ライブラリを引き継げます。保存済みの .ctm も直接開けます。
 必要環境は Windows x64、.NET Framework 4.7.2 以降、システムにインストール済みの Microsoft Edge WebView2 Runtime です。オフラインで動作し、サーバー、アカウント、Node.js は不要です。
 左側でパターンを選び、右側で調整します。マウスホイールで拡大縮小、Space キーを押しながらドラッグするとキャンバスを移動できます。シームレスモードはキャンバス周期に合わせます。3 × 3 プレビューで継ぎ目を確認でき、書き出しは 1 タイルです。
 PNG は透明または単色背景に対応し、長辺 8192 px、総画素数 32 MP が上限です。プロシージャル図形はベクター SVG になり、読み込んだ PNG はラスター画像として SVG に埋め込まれます。
+下のツールバーでカーソル・手のひらを切り替えます。ドット／多角形の描画・消去はブラシ直径を調整でき、1ストロークずつ元に戻せます。形状メニュー横の共通ライブラリはPNG／SVG（1個4 MiB、40個・合計32 MiB）をハーフトーン、ドット、多角形、シンボルで使用できます。テクニカルグリッドでは基本線・対角線の破線・余白を分けて設定します。
 Ctrl+S で .ctm プロジェクトを保存、Ctrl+O で開き、Ctrl+E で書き出します。Ctrl+Z で元に戻し、Ctrl+Shift+Z または Ctrl+Y でやり直します。
 作業と設定はアプリの隣の data フォルダーに保存されます。終了前にステータスバーの「自動保存済み」を確認し、デザインの移動やバックアップには .ctm プロジェクトを別途保存してください。
 本プロジェクト独自のコードは MPL-2.0 です。Transitions.dev と Microsoft WebView2 には各自の条件が適用されます。LICENSE、LICENSE-SCOPE.md、THIRD-PARTY-NOTICES.txt、ポータブル版の LICENSE-WebView2.txt を参照してください。
