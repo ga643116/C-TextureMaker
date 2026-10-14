@@ -4,11 +4,11 @@
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.3.0 公開預覽** · [下載 Windows x64 便攜包](https://github.com/ga643116/C-TextureMaker/releases/download/v1.3.0/C-TextureMaker-1.3.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.3.0) · [原始碼](https://github.com/ga643116/C-TextureMaker)
+**v1.4.0 公開預覽** · [下載 Windows x64 便攜包](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.0/C-TextureMaker-1.4.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.4.0) · [原始碼](https://github.com/ga643116/C-TextureMaker)
 
-[查看 1.3.0 更新重點](docs/releases/v1.3.0.md#繁體中文)
+[查看 1.4.0 更新重點](docs/releases/v1.4.0.md#繁體中文)
 
-**1.4.0 原始碼更新**：新增 Low Poly、圖片色彩上色與等高線立體陰影，並改進儲存／另存新檔操作。[查看更新重點](docs/releases/v1.4.0.md#繁體中文)。GitHub 下載版目前仍為 1.3.0。
+**本次更新**：新增 Low Poly、圖片色彩上色與等高線立體陰影，並改進儲存／另存新檔操作。
 
 ![繁體中文深色主題工作區](docs/media/workspace-zh-dark.png)
 
@@ -42,7 +42,7 @@
 
 ## 下載與啟動
 
-1. 下載 [C-TextureMaker-1.3.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.3.0/C-TextureMaker-1.3.0-win-x64.zip) 並完整解壓縮。
+1. 下載 [C-TextureMaker-1.4.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.0/C-TextureMaker-1.4.0-win-x64.zip) 並完整解壓縮。
 2. 開啟資料夾中的 C-TextureMaker.exe，保留旁邊的 app 資料夾與 DLL。
 3. 建議將整個資料夾放在可寫入的位置；程式會在旁邊的 data 資料夾保存工作與偏好。
 
