@@ -47,6 +47,36 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
   const save=()=>download(()=>page.locator('[data-action=save]').click());
   const exported=async(format)=>{await page.locator('[data-action=export]').click();await page.locator(`[data-format=${format}]`).click();return download(()=>page.locator('#do-export').click());};
 
+  // Pattern variants belong to their layer and survive real editor save/restore routes.
+  {
+   await load('dots',{spacing:52,size:12},{rotation:18,offsetX:16,hiddenCells:['1:1']});
+   await change('spacing',73);
+   await page.locator('[data-pattern=grid]').click();await change('cellSize',88);
+   await page.locator('[data-pattern=dots]').click();assert.equal(await field('spacing').inputValue(),'73');
+   await openInspectorSection('transform');assert.equal(await field('rotation').inputValue(),'18');await change('rotation',31);
+   const beforeSame=JSON.parse((await save()).toString());await page.locator('[data-pattern=dots]').click();
+   assert.deepEqual(JSON.parse((await save()).toString()),beforeSame,'clicking the current pattern must keep all settings');
+   await page.locator('[data-pattern=grid]').click();assert.equal(await field('cellSize').inputValue(),'88');
+   const project=await save(),stored=JSON.parse(project.toString());
+   assert.equal(stored.layers[0].patternSettings.dots.params.spacing,73,'inactive pattern parameters are saved');
+   assert.equal(stored.layers[0].patternSettings.dots.rotation,31);assert.deepEqual(stored.layers[0].patternSettings.dots.hiddenCells,['1:1']);
+   await load('waves');await page.locator('#file-project').setInputFiles({name:'All patterns.ctm',mimeType:'application/json',buffer:project});
+   await page.waitForFunction(()=>document.querySelector('[data-pattern=grid]')?.getAttribute('aria-pressed')==='true');
+   await page.locator('[data-pattern=dots]').click();assert.equal(await field('spacing').inputValue(),'73');assert.equal(await field('rotation').inputValue(),'31');
+   await page.locator('[data-action=undo]').click();assert.equal(await field('cellSize').inputValue(),'88','undo restores the previous pattern and settings');
+   await page.locator('[data-action=redo]').click();assert.equal(await field('spacing').inputValue(),'73');
+   await page.locator('[data-action=reset]').click();assert.equal(Number(await field('spacing').inputValue()),PATTERNS.find(p=>p.id==='dots').defaults.spacing);
+   await page.locator('[data-action=undo]').click();assert.equal(await field('spacing').inputValue(),'73','reset can be undone');
+   await page.locator('[data-action=redo]').click();await page.locator('[data-pattern=grid]').click();assert.equal(await field('cellSize').inputValue(),'88','reset leaves other patterns intact');
+   await page.locator('[data-pattern=dots]').click();await change('spacing',67);await page.locator('[data-pattern=grid]').click();
+   await page.waitForTimeout(650);await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.appReady==='true');
+   assert.equal(await field('cellSize').inputValue(),'88');await page.locator('[data-pattern=dots]').click();assert.equal(await field('spacing').inputValue(),'67','autosave restores inactive settings after reload');
+   await page.locator('[data-action=duplicate]').click();await change('spacing',99);await page.locator('[data-pattern=grid]').click();await change('cellSize',120);
+   await page.locator('[data-action=select-layer][data-id=fixture]').click();assert.equal(await field('spacing').inputValue(),'67');
+   await page.locator('[data-pattern=grid]').click();assert.equal(await field('cellSize').inputValue(),'88','duplicated layers keep independent variant settings');
+   console.log('PASS pattern settings across switching, same-pattern clicks, project save/reopen, undo/redo, reset, autosave and independent layers');
+  }
+
   await load('dots',{finite:true,rows:8,columns:8,size:8});
   let cells=await centers();const a=cells[18],b=cells[22],blank={x:a.x+18,y:a.y+18},original=await transform();
   await drag(blank,{x:blank.x+80,y:blank.y+30});assert.equal(await transform(),original,'cursor must never pan on a missed cell');
@@ -212,6 +242,40 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
   assert.equal(await page.locator('#p-junction option[value=plus]').count(),0);
   for(const [language,title] of [['en','Base grid'],['ja','基本グリッド'],['zh','主格線']]){await page.locator('[data-action=language]').selectOption(language);assert.equal(await page.locator('[data-parameter-group=mainGrid] h2').textContent(),title);}
   console.log('PASS independent grid/diagonal dashes, grouping, controls and three languages');
+  // Exercise the desktop header layout without launching a native window.
+  {
+   const desktopContext=await browser.newContext({viewport:{width:1440,height:960}});
+   await desktopContext.addInitScript(()=>{
+    localStorage.setItem('ctm.preferences',JSON.stringify({lang:'zh',theme:'dark',motion:false}));
+    Object.defineProperty(window.chrome,'webview',{value:{postMessage(){},addEventListener(){}}});
+   });
+   const desktopPage=await desktopContext.newPage();desktopPage.on('pageerror',error=>errors.push(error.message));
+   await desktopPage.goto(url);await desktopPage.waitForFunction(()=>document.documentElement.dataset.appReady==='true');
+   for(const width of [960,1080,1180,1280,1440,1600,1920,2560]){
+    await desktopPage.setViewportSize({width,height:960});
+    const layout=await desktopPage.evaluate(()=>{
+     const box=s=>document.querySelector(s).getBoundingClientRect();
+     const project=box('.document-name'),stage=box('.stage'),title=box('.art-title'),icon=box('.document-name svg'),brandEnd=box('.brand small');
+     const language=box('.language-select'),help=box('[data-action=help]'),controls=box('.window-controls');
+     return{projectWidth:project.width,projectLeft:project.left,stageLeft:stage.left,titleLeft:title.left,iconLeft:icon.left,brandRight:brandEnd.right,languageRight:language.right,helpLeft:help.left,controlsRight:controls.right,viewport:innerWidth};
+    });
+    if(width>1180){
+     assert.ok(Math.abs(layout.projectLeft-layout.stageLeft)<1,`${width}: project area aligns with canvas column`);
+     assert.ok(Math.abs(layout.iconLeft-layout.titleLeft)<1,`${width}: project icon aligns with canvas header inset`);
+     assert.ok(layout.brandRight<layout.projectLeft-4,`${width}: brand and project name do not overlap`);
+    }else assert.equal(layout.projectWidth,0,'compact desktop header hides the project name');
+    assert.ok(layout.languageRight+4<=layout.helpLeft,`${width}: language and help have separate space`);
+    assert.ok(layout.controlsRight<=layout.viewport,`${width}: window controls stay inside the viewport`);
+   }
+   await desktopPage.setViewportSize({width:1440,height:960});
+   for(const theme of ['dark','light']){
+    if(theme==='light')await desktopPage.locator('[data-action=theme]').click();
+    await fs.mkdir(path.join(root,'.tools','validation-1.3.1'),{recursive:true});
+    await desktopPage.screenshot({path:path.join(root,'.tools','validation-1.3.1',`aligned-header-${theme}.png`),fullPage:true});
+   }
+   await desktopContext.close();
+   console.log('PASS desktop project/header column alignment and toolbar spacing at eight widths');
+  }
   assert.deepEqual(errors,[],'app must not emit unhandled browser errors');
   console.log('PASS editor browser integration');
  }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}

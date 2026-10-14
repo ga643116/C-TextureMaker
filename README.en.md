@@ -8,6 +8,8 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 
 [See what's new in 1.3.0](docs/releases/v1.3.0.md#english)
 
+**1.3.1 source update**: Each layer remembers settings for every pattern and saves them with the project. Maximized window gaps and project-title alignment are fixed. A public 1.3.1 download has not been released yet.
+
 ![Workspace in Traditional Chinese with the dark theme](docs/media/workspace-zh-dark.png)
 
 <details>

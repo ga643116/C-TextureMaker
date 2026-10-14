@@ -45,6 +45,8 @@ export const PATTERNS = [
 export const SHAPE_PATTERNS = ['halftone','dots','polygons','symbols'];
 
 const patternById = new Map(PATTERNS.map(p => [p.id, p]));
+const PATTERN_SETTING_KEYS = ['opacity','color','secondary','rotation','scale','offsetX','offsetY','params','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask'];
+const patternSettingKeySet = new Set(PATTERN_SETTING_KEYS);
 const isObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = v => JSON.parse(JSON.stringify(v));
 const hex = v => typeof v === 'string' && /^#[\da-fA-F]{6}$/.test(v);
@@ -73,7 +75,62 @@ export function createLayer(type, id = `layer-${Date.now().toString(36)}-${(++la
   const p = patternById.get(type);
   assert(p, `Unknown pattern: ${type}`);
   assert(safeId(id), 'Invalid layer id');
-  return { id, type, visible: true, opacity: 1, color: '#e9e6df', secondary: '#77736d', rotation: 0, scale: 1, offsetX: 0, offsetY: 0, params: clone(p.defaults), hiddenCells: [], customMotif: null, motifTint: false, cellLinks: [], linkWidth: 2, mask: null };
+  return { id, type, visible: true, opacity: 1, color: '#e9e6df', secondary: '#77736d', rotation: 0, scale: 1, offsetX: 0, offsetY: 0, params: clone(p.defaults), hiddenCells: [], customMotif: null, motifTint: false, cellLinks: [], linkWidth: 2, mask: null, patternSettings: {} };
+}
+
+function clonePatternSettings(value, activeType) {
+  assert(isObject(value), 'Invalid patternSettings');
+  const settings = {};
+  for (const [type, snapshot] of Object.entries(value)) {
+    assert(patternById.has(type) && type !== activeType, 'Invalid cached pattern type');
+    assert(isObject(snapshot), 'Invalid pattern snapshot');
+    for (const key of Object.keys(snapshot)) assert(patternSettingKeySet.has(key), `Unknown pattern snapshot field: ${key}`);
+    for (const key of PATTERN_SETTING_KEYS) assert(Object.hasOwn(snapshot, key), `Missing pattern snapshot field: ${key}`);
+    settings[type] = clone(snapshot);
+  }
+  return settings;
+}
+
+function snapshotPatternSettings(layer) {
+  return Object.fromEntries(PATTERN_SETTING_KEYS.map(key => [key, clone(layer[key])]));
+}
+
+function assertPatternLayer(layer) {
+  assert(isObject(layer) && patternById.has(layer.type), 'Expected a pattern layer');
+  assert(safeId(layer.id), 'Invalid layer id');
+  assert(typeof layer.visible === 'boolean', 'Invalid layer visibility');
+}
+
+export function switchLayerPattern(layer, type) {
+  assertPatternLayer(layer);
+  assert(patternById.has(type), `Unknown pattern: ${type}`);
+  if (type === layer.type) return layer;
+
+  const patternSettings = clonePatternSettings(layer.patternSettings ?? {}, layer.type);
+  const next = createLayer(type, layer.id);
+  next.visible = layer.visible;
+  if (Object.hasOwn(patternSettings, type)) {
+    const restored = patternSettings[type];
+    for (const key of PATTERN_SETTING_KEYS) next[key] = restored[key];
+    delete patternSettings[type];
+  } else {
+    next.opacity = layer.opacity;
+    next.color = layer.color;
+    next.secondary = layer.secondary;
+  }
+  patternSettings[layer.type] = snapshotPatternSettings(layer);
+  next.patternSettings = patternSettings;
+  return next;
+}
+
+export function resetLayerPattern(layer) {
+  assertPatternLayer(layer);
+  const next = createLayer(layer.type, layer.id);
+  next.visible = layer.visible;
+  next.color = layer.color;
+  next.secondary = layer.secondary;
+  next.patternSettings = clonePatternSettings(layer.patternSettings ?? {}, layer.type);
+  return next;
 }
 const IMAGE_MASK_FIELDS = new Set(['id','type','name','visible','image','imageWidth','imageHeight','threshold','invert','fit','scale','rotation','offsetX','offsetY','flipX','flipY']);
 const IMAGE_MASK_REQUIRED = [...IMAGE_MASK_FIELDS];
@@ -212,6 +269,49 @@ function normalizeParams(type, value) {
   }
   return out;
 }
+function normalizePatternState(type, raw, width, height) {
+  assert(typeof raw.opacity === 'number' && Number.isFinite(raw.opacity), 'Invalid layer opacity');
+  assert(hex(raw.color) && hex(raw.secondary), 'Invalid layer color');
+  for (const key of ['rotation','scale','offsetX','offsetY']) assert(typeof raw[key] === 'number' && Number.isFinite(raw[key]), `Invalid layer ${key}`);
+  assert(Array.isArray(raw.hiddenCells) && raw.hiddenCells.length <= 10000 && raw.hiddenCells.every(value => typeof value === 'string' && /^(0|[1-9]\d{0,4}):(0|[1-9]\d{0,4})$/.test(value)), 'Invalid hiddenCells');
+  const motifTint = Object.hasOwn(raw, 'motifTint') ? raw.motifTint : false;
+  assert(typeof motifTint === 'boolean', 'Invalid motifTint');
+  const linkWidth = Object.hasOwn(raw, 'linkWidth') ? raw.linkWidth : 2;
+  assert(typeof linkWidth === 'number' && Number.isFinite(linkWidth), 'Invalid linkWidth');
+  return {
+    opacity: Math.min(1, Math.max(0, raw.opacity)),
+    color: raw.color,
+    secondary: raw.secondary,
+    rotation: raw.rotation % 360,
+    scale: Math.min(2, Math.max(0.1, raw.scale)),
+    offsetX: Math.min(width, Math.max(-width, raw.offsetX)),
+    offsetY: Math.min(height, Math.max(-height, raw.offsetY)),
+    params: normalizeParams(type, raw.params),
+    hiddenCells: [...new Set(raw.hiddenCells)],
+    customMotif: validateDataImage(raw.customMotif, 'customMotif'),
+    motifTint,
+    cellLinks: Object.hasOwn(raw, 'cellLinks') ? normalizeCellLinks(raw.cellLinks) : [],
+    linkWidth: Math.min(128, Math.max(0.25, linkWidth)),
+    mask: validateDataImage(raw.mask, 'mask'),
+  };
+}
+function normalizePatternSnapshot(type, raw, width, height) {
+  assert(isObject(raw), 'Invalid pattern snapshot');
+  for (const key of Object.keys(raw)) assert(patternSettingKeySet.has(key), `Unknown pattern snapshot field: ${key}`);
+  for (const key of PATTERN_SETTING_KEYS) assert(Object.hasOwn(raw, key), `Missing pattern snapshot field: ${key}`);
+  return normalizePatternState(type, raw, width, height);
+}
+function normalizePatternSettings(activeType, value, width, height) {
+  if (value === undefined) return {};
+  assert(isObject(value), 'Invalid patternSettings');
+  const settings = {};
+  for (const [type, snapshot] of Object.entries(value)) {
+    assert(patternById.has(type), `Unknown cached pattern type: ${type}`);
+    assert(type !== activeType, 'Active pattern cannot be cached');
+    settings[type] = normalizePatternSnapshot(type, snapshot, width, height);
+  }
+  return settings;
+}
 export function normalizeDocument(input) {
   assert(isObject(input), 'Document must be an object');
   const fields = new Set(['version','name','width','height','transparent','background','seamless','seed','layers']);
@@ -231,30 +331,13 @@ export function normalizeDocument(input) {
     if (raw.type === 'imageMask') return normalizeImageMaskLayer(raw);
     assert(patternById.has(raw.type), `Unknown layer type: ${raw.type}`);
     patternCount++;
-    const keys = new Set(['id','type','visible','opacity','color','secondary','rotation','scale','offsetX','offsetY','params','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask']);
-    for (const k of Object.keys(raw)) assert(keys.has(k), `Unknown layer field: ${k}`);
+    const keys = new Set(['id','type','visible',...PATTERN_SETTING_KEYS,'patternSettings']);
+    for (const key of Object.keys(raw)) assert(keys.has(key), `Unknown layer field: ${key}`);
     assert(typeof raw.visible === 'boolean', 'Invalid layer visibility');
-    assert(typeof raw.opacity === 'number' && Number.isFinite(raw.opacity), 'Invalid layer opacity');
-    assert(hex(raw.color) && hex(raw.secondary), 'Invalid layer color');
-    for (const k of ['rotation','scale','offsetX','offsetY']) assert(typeof raw[k] === 'number' && Number.isFinite(raw[k]), `Invalid layer ${k}`);
-    assert(Array.isArray(raw.hiddenCells) && raw.hiddenCells.length <= 10000 && raw.hiddenCells.every(v => typeof v === 'string' && /^(0|[1-9]\d{0,4}):(0|[1-9]\d{0,4})$/.test(v)), 'Invalid hiddenCells');
     const layer = createLayer(raw.type, raw.id);
-    layer.visible = raw.visible; layer.opacity = Math.min(1, Math.max(0, raw.opacity));
-    layer.color = raw.color; layer.secondary = raw.secondary;
-    layer.rotation = raw.rotation % 360;
-    layer.scale = Math.min(2, Math.max(0.1, raw.scale));
-    layer.offsetX = Math.min(width, Math.max(-width, raw.offsetX));
-    layer.offsetY = Math.min(height, Math.max(-height, raw.offsetY));
-    layer.params = normalizeParams(raw.type, raw.params);
-    layer.hiddenCells = [...new Set(raw.hiddenCells)];
-    layer.customMotif = validateDataImage(raw.customMotif, 'customMotif');
-    layer.motifTint = Object.hasOwn(raw, 'motifTint') ? raw.motifTint : false;
-    assert(typeof layer.motifTint === 'boolean', 'Invalid motifTint');
-    layer.cellLinks = Object.hasOwn(raw, 'cellLinks') ? normalizeCellLinks(raw.cellLinks) : [];
-    layer.linkWidth = Object.hasOwn(raw, 'linkWidth') ? raw.linkWidth : 2;
-    assert(typeof layer.linkWidth === 'number' && Number.isFinite(layer.linkWidth), 'Invalid linkWidth');
-    layer.linkWidth = Math.min(128, Math.max(0.25, layer.linkWidth));
-    layer.mask = validateDataImage(raw.mask, 'mask');
+    layer.visible = raw.visible;
+    Object.assign(layer, normalizePatternState(raw.type, raw, width, height));
+    layer.patternSettings = normalizePatternSettings(raw.type, raw.patternSettings, width, height);
     return layer;
   });
   assert(patternCount >= 1, 'Document must have at least one pattern layer');

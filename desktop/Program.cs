@@ -174,9 +174,18 @@ namespace CTextureMaker
             if (m.Msg == WmNcCalcSize)
             {
                 NativeRect proposedWindowBounds = (NativeRect)Marshal.PtrToStructure(m.LParam, typeof(NativeRect));
+                bool isMaximized = IsZoomed(m.HWnd);
                 base.WndProc(ref m);
                 NativeRect clientBounds = (NativeRect)Marshal.PtrToStructure(m.LParam, typeof(NativeRect));
-                clientBounds.Top = proposedWindowBounds.Top;
+                if (isMaximized)
+                {
+                    clientBounds = proposedWindowBounds;
+                    m.Result = IntPtr.Zero;
+                }
+                else
+                {
+                    clientBounds.Top = proposedWindowBounds.Top;
+                }
                 Marshal.StructureToPtr(clientBounds, m.LParam, false);
                 return;
             }
@@ -695,6 +704,10 @@ namespace CTextureMaker
 
         [DllImport("dwmapi.dll", PreserveSig = true)]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int attributeValue, int attributeSize);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsZoomed(IntPtr hwnd);
 
         [DllImport("user32.dll", ExactSpelling = true)]
         private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
