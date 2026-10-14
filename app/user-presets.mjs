@@ -144,4 +144,3 @@ export function applyUserPreset(doc, selectedId, preset, newId) {
   document.layers[targetIndex] = nextLayer;
   return { document, selectedId: target.id };
 }
-

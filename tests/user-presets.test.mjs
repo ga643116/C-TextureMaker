@@ -187,4 +187,3 @@ test('application and reads never share nested references with source documents 
   assert.equal(sourceDoc.layers[0].params.spacing, 32);
   assert.equal(sourceDoc.layers[1].params.cellSize, 64);
 });
-
