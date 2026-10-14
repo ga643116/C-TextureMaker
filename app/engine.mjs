@@ -328,11 +328,17 @@ function normalizePatternSettings(activeType, value, width, height) {
 }
 export function normalizeDocument(input) {
   assert(isObject(input), 'Document must be an object');
-  const fields = new Set(['version','name','width','height','transparent','background','seamless','seed','layers']);
+  const fields = new Set(['version','name','width','height','transparent','background','seamless','seed','aspectRatio','layers']);
   for (const k of Object.keys(input)) assert(fields.has(k), `Unknown document field: ${k}`);
   assert(input.version === 1, `Unsupported document version: ${input.version}`);
   assert(typeof input.name === 'string' && input.name.length > 0 && input.name.length <= 128 && !/[\u0000-\u001f]/.test(input.name), 'Invalid document name');
   assert(Number.isFinite(input.width) && Number.isFinite(input.height), 'Invalid document dimensions');
+  if (Object.hasOwn(input, 'aspectRatio')) {
+    const value = input.aspectRatio;
+    assert(value === null || (Array.isArray(value) && value.length === 2 &&
+      Number.isInteger(value[0]) && value[0] >= 128 && value[0] <= 4096 &&
+      Number.isInteger(value[1]) && value[1] >= 128 && value[1] <= 4096), 'Invalid document aspect ratio');
+  }
   assert(typeof input.transparent === 'boolean' && typeof input.seamless === 'boolean', 'Invalid document flags');
   assert(hex(input.background), 'Invalid background color');
   assert(Number.isInteger(input.seed) && input.seed >= 1 && input.seed <= 999999, 'Invalid seed');
@@ -355,7 +361,12 @@ export function normalizeDocument(input) {
     return layer;
   });
   assert(patternCount >= 1, 'Document must have at least one pattern layer');
-  return { version:1, name:input.name, width, height, transparent:input.transparent, background:input.background, seamless:input.seamless, seed:input.seed, layers };
+  return {
+    version:1, name:input.name, width, height, transparent:input.transparent, background:input.background,
+    seamless:input.seamless, seed:input.seed,
+    ...(Object.hasOwn(input, 'aspectRatio') ? { aspectRatio: input.aspectRatio === null ? null : [...input.aspectRatio] } : {}),
+    layers,
+  };
 }
 
 const fmt = value => {

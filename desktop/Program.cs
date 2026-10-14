@@ -72,6 +72,10 @@ namespace CTextureMaker
 
         private readonly bool _smokeTest;
         private readonly bool _enableDevTools;
+        private bool _closeGuardReady;
+        private bool _closeRequestPending;
+        private bool _allowNextUserClose;
+        private volatile bool _startupFailed;
         private readonly WebView2 _webView;
         private readonly JavaScriptSerializer _serializer;
         private readonly List<MemoryStream> _blockedResponseBodies;
@@ -154,6 +158,7 @@ namespace CTextureMaker
             Controls.Add(_webView);
 
             Shown += OnShown;
+            FormClosing += OnFormClosing;
             FormClosed += OnFormClosed;
             Resize += OnWindowResize;
             if (_smokeTest)
@@ -417,6 +422,7 @@ namespace CTextureMaker
                 settings.IsStatusBarEnabled = false;
                 settings.IsZoomControlEnabled = false;
                 settings.IsWebMessageEnabled = true;
+                _webView.AllowExternalDrop = true;
                 settings.AreDevToolsEnabled = _enableDevTools;
                 _webView.DefaultBackgroundColor = _hostBackgroundColor;
 
@@ -761,7 +767,24 @@ namespace CTextureMaker
         private void HandleWindowMessage(IDictionary<string, object> message)
         {
             string action = ReadString(message, "action");
-            if (String.Equals(action, "minimize", StringComparison.Ordinal))
+            if (String.Equals(action, "close-guard-ready", StringComparison.Ordinal))
+            {
+                _closeGuardReady = true;
+            }
+            else if (String.Equals(action, "close-confirmed", StringComparison.Ordinal))
+            {
+                if (_closeGuardReady && _closeRequestPending)
+                {
+                    _allowNextUserClose = true;
+                    Close();
+                }
+            }
+            else if (String.Equals(action, "close-cancelled", StringComparison.Ordinal))
+            {
+                if (_closeRequestPending)
+                    _closeRequestPending = false;
+            }
+            else if (String.Equals(action, "minimize", StringComparison.Ordinal))
             {
                 WindowState = FormWindowState.Minimized;
             }
@@ -786,6 +809,55 @@ namespace CTextureMaker
                     ApplyHostTheme(true);
                 else
                     throw new InvalidDataException("視窗主題無效。");
+            }
+        }
+
+        private void OnFormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (_smokeTest || _startupFailed || !_closeGuardReady || e.CloseReason != CloseReason.UserClosing)
+                return;
+
+            if (_allowNextUserClose)
+            {
+                _allowNextUserClose = false;
+                _closeRequestPending = false;
+                return;
+            }
+
+            e.Cancel = true;
+            if (_closeRequestPending)
+                return;
+
+            _closeRequestPending = true;
+            PostCloseRequest();
+        }
+
+        private void PostCloseRequest()
+        {
+            try
+            {
+                CoreWebView2 core = _webView.CoreWebView2;
+                if (core == null)
+                {
+                    _closeRequestPending = false;
+                    return;
+                }
+
+                Dictionary<string, object> request = new Dictionary<string, object>();
+                request["type"] = "window-close-request";
+                core.PostWebMessageAsJson(_serializer.Serialize(request));
+            }
+            catch (ObjectDisposedException)
+            {
+                _closeRequestPending = false;
+            }
+            catch (InvalidOperationException)
+            {
+                _closeRequestPending = false;
+            }
+            catch (COMException)
+            {
+                _closeRequestPending = false;
             }
         }
 
@@ -1103,6 +1175,7 @@ namespace CTextureMaker
 
         private void FailStartup(string message)
         {
+            _startupFailed = true;
             string error = LimitErrorMessage(message);
             if (_smokeTest)
             {

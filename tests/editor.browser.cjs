@@ -28,7 +28,7 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
   browser=await chromium.launch({channel:'msedge',headless:true});
   const context=await browser.newContext({viewport:{width:1440,height:960},acceptDownloads:true});
   await context.addInitScript(()=>{if(!localStorage.getItem('ctm.preferences'))localStorage.setItem('ctm.preferences',JSON.stringify({lang:'zh',theme:'dark',motion:false}));});
-  const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const page=await context.newPage(),errors=[];page.on('dialog',d=>d.accept());page.on('pageerror',error=>errors.push(error.message));
   const url=`http://127.0.0.1:${server.address().port}/app/index.html`;
   await page.goto(url);await page.waitForFunction(()=>document.documentElement.dataset.appReady==='true');
   const field=key=>page.locator(`#inspector input[type=number][data-key="${key}"]`);
@@ -36,7 +36,9 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
   const change=async(key,value)=>{await field(key).fill(String(value));await field(key).press('Tab');await page.waitForTimeout(40);};
   const load=async(type,params={},layerExtra={},docExtra={})=>{
    const doc=createDocument();Object.assign(doc,{width:512,height:512},docExtra);doc.layers=[createLayer(type,'fixture')];Object.assign(doc.layers[0],{color:'#252525',secondary:'#787878'},layerExtra);Object.assign(doc.layers[0].params,params);
+   const discard=await page.locator('html').getAttribute('data-project-dirty')==='true';
    await page.locator('#file-project').setInputFiles({name:'fixture.ctm',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(doc))});
+   if(discard)await page.locator('#unsaved-discard').click();
    await page.waitForFunction(type=>document.querySelector(`[data-pattern="${type}"]`)?.getAttribute('aria-pressed')==='true',type);await page.waitForTimeout(80);
    return doc;
   };
@@ -142,7 +144,7 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
   imageDoc=await savedDocument();assert.equal(imageDoc.layers.filter(layer=>layer.type==='imageMask').length,1,'selecting a pattern while a mask is selected preserves the mask');assert.equal(imageDoc.layers.filter(layer=>layer.type!=='imageMask').length,1,'pattern selection replaces the last pattern');assert.equal(imageDoc.layers.find(layer=>layer.type!=='imageMask').type,'polygons');
   await page.locator('[data-action=add-layer]').click();await page.locator('[data-pattern=dots]').click();
   imageDoc=await savedDocument();assert.equal(imageDoc.layers.filter(layer=>layer.type==='imageMask').length,1);assert.equal(imageDoc.layers.filter(layer=>layer.type!=='imageMask').length,2,'image mask remains a separate layer across pattern edits');
-  await selectLayer(maskId).click();assert.equal(await page.locator('#mask-overlay').isVisible(),true,'selected mask exposes transform handles in single view');await fs.mkdir(path.join(root,'.tools','validation-1.4.0'),{recursive:true});await page.screenshot({path:path.join(root,'.tools','validation-1.4.0','persistent-image-mask.png'),fullPage:true});
+  await selectLayer(maskId).click();assert.equal(await page.locator('#mask-overlay').isVisible(),true,'selected mask exposes transform handles in single view');await fs.mkdir(path.join(root,'.tools','validation-1.5.0'),{recursive:true});await page.screenshot({path:path.join(root,'.tools','validation-1.5.0','persistent-image-mask.png'),fullPage:true});
   let masked=await readMaskRaster();
   assert.ok(alphaPixels(masked,16,40,240,240)>0,'dark source region retains artwork');assert.equal(alphaPixels(masked,272,40,496,240),0,'white source region removes artwork from every pattern layer');assert.equal(alphaPixels(masked,0,0,512,24),0,'transparent source pixels remain empty');
   const baseAlpha=alphaTotal(masked);await page.locator('[data-action=layer-down]').click();let reordered=await readMaskRaster();assert.equal(alphaTotal(reordered),baseAlpha,'mask intersection is independent of layer stacking');
@@ -271,8 +273,8 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
    await desktopPage.setViewportSize({width:1440,height:960});
    for(const theme of ['dark','light']){
     if(theme==='light')await desktopPage.locator('[data-action=theme]').click();
-    await fs.mkdir(path.join(root,'.tools','validation-1.4.0'),{recursive:true});
-    await desktopPage.screenshot({path:path.join(root,'.tools','validation-1.4.0',`aligned-header-${theme}.png`),fullPage:true});
+    await fs.mkdir(path.join(root,'.tools','validation-1.5.0'),{recursive:true});
+    await desktopPage.screenshot({path:path.join(root,'.tools','validation-1.5.0',`aligned-header-${theme}.png`),fullPage:true});
    }
    await desktopContext.close();
    console.log('PASS desktop project/header column alignment and toolbar spacing at eight widths');

@@ -1,4 +1,4 @@
-C-TextureMaker 1.4.0 — Quick Start
+C-TextureMaker 1.5.0 — Quick Start
 公開預覽 | Public preview | 公開プレビュー
 
 已公開版本 / Published downloads / 公開済みバージョン:
@@ -8,8 +8,11 @@ https://github.com/ga643116/C-TextureMaker
 
 繁體中文
 --------
+自訂預設存於使用者資料庫，套用只更新目前圖樣，不會開啟另一份專案。舊預設套用第一個圖樣圖層，原記錄仍保留。新建、開啟另一份專案或關閉時，未儲存變更可選擇儲存、不儲存或取消。
+可從資料夾拖入 PNG、JPG、WebP 或 SVG 成為圖片圖層；右側顯示原始尺寸。點擊畫布左上角的尺寸可編輯寬高，比例鎖定也會存入 .ctm。
+
 解壓縮 ZIP 後，開啟 C-TextureMaker.exe。請保留同一資料夾內的 app 與 DLL，並將整個資料夾放在可寫入的位置。
-升級時先關閉舊版，再將舊版的 data 資料夾複製到新版程式旁，可延續自動存檔、偏好與形狀庫；也可直接開啟先前另存的 .ctm。
+升級時先關閉舊版，再將舊版的 data 資料夾複製到新版程式旁，可延續自動存檔、偏好、自訂預設與形狀庫；也可直接開啟先前另存的 .ctm。
 需要 Windows x64、.NET Framework 4.7.2 或更新版本，以及系統已安裝的 Microsoft Edge WebView2 Runtime。成品離線執行，不需伺服器、帳號或 Node.js。
 左側選圖樣、右側調整參數；滾輪縮放，空白鍵＋拖曳移動畫布。無縫模式配合畫布週期排列；以 3 × 3 預覽檢查接縫，匯出仍是單格。
 PNG 可輸出透明或實色背景，最長邊上限 8192 px、總像素上限 32 MP。程序式圖形匯出為向量 SVG；匯入的 PNG 會以點陣圖嵌入 SVG。
@@ -17,15 +20,18 @@ PNG 可輸出透明或實色背景，最長邊上限 8192 px、總像素上限 3
 形狀庫中的鉛筆按鈕可重新命名；套用形狀後，在「外觀」開啟「依主色染色」。兩點連線依序點選端點，重選相同一對可刪除，Esc 取消起點。
 左下「圖層」的圖片按鈕可新增圖片遮罩：PNG/JPG/WebP（16 MiB）或 SVG（4 MiB）。直接調整圖層閾值、反轉；選取圖片可獨立移動、縮放、旋轉與翻轉。所有圖樣改變密度仍受同一遮罩影響，單元編輯會保留。單格中拖曳邊框移動、角點縮放、圓點旋轉。來源隨專案保存並嵌入 SVG 遮罩；圖片接縫請用 3 × 3 檢查。
 每個圖層會分別記住各種圖樣的參數、外觀與單元編輯；切換圖樣不會重設，專案存檔也會保留。恢復預設只影響目前圖樣。
-Low Poly 可由配色漸層或照片逐面上色；圖片圖層可切換黑白遮罩／圖片色彩，為所有圖樣上色。等高線可開啟立體填色，調整內外陰影、範圍、距離、方向、顏色與不透明度。新設定需要 1.4.0 或更新版本。
+Low Poly 可由配色漸層或照片逐面上色；圖片圖層可切換黑白遮罩／圖片色彩，為所有圖樣上色。等高線可開啟立體填色，調整內外陰影、範圍、距離、方向、顏色與不透明度。新設定需要 1.5.0 或更新版本。
 Ctrl+S 首次選擇 .ctm 位置，之後直接更新原檔；旁邊箭頭或 Ctrl+Shift+S 另存新檔。Ctrl+O 開啟，Ctrl+E 匯出；Ctrl+Z 復原，Ctrl+Shift+Z 或 Ctrl+Y 重做。
 工作與偏好保存在程式旁的 data 資料夾。關閉前確認狀態列顯示「已自動儲存」；搬移或備份設計時另存 .ctm 專案。
 本專案自有程式碼採 MPL-2.0；Transitions.dev 與 Microsoft WebView2 元件依各自授權條款使用。詳見 LICENSE、LICENSE-SCOPE.md、THIRD-PARTY-NOTICES.txt 與程式包內的 LICENSE-WebView2.txt。
 
 ENGLISH
 -------
+User presets update the current pattern without opening another project. Legacy presets apply their first pattern layer and keep the original record. New, Open and Close offer Save, Don’t save or Cancel when there are unsaved changes.
+Drop PNG, JPG, WebP or SVG files into the app to add image layers; original dimensions appear in the inspector. Click the canvas dimensions to edit them. Aspect ratio locking is saved in .ctm projects.
+
 Extract the ZIP and open C-TextureMaker.exe. Keep the app folder and DLL files beside the executable, and place the whole folder somewhere writable.
-To upgrade, close the older version, then copy its data folder beside the new app to keep autosave, preferences and the shape library. Previously saved .ctm files can also be opened directly.
+To upgrade, close the older version, then copy its data folder beside the new app to keep autosave, preferences, user presets and the shape library. Previously saved .ctm files can also be opened directly.
 Requirements: Windows x64, .NET Framework 4.7.2 or later, and the Microsoft Edge WebView2 Runtime installed on the system. The app runs offline; no server, account, or Node.js is needed.
 Choose a pattern on the left and adjust it on the right. Use the mouse wheel to zoom and Space+drag to pan. Seamless mode fits the pattern to the canvas period; use the 3 × 3 preview to inspect seams. Exports contain one tile.
 PNG supports transparent or solid backgrounds, up to an 8192 px longest edge and 32 MP total. Procedural shapes export as vector SVG; imported PNGs remain embedded raster images.
@@ -33,13 +39,16 @@ Use the bottom toolbar to switch between cursor and hand tools. Dot/polygon pain
 Use the pencil button in the shape library to rename a shape. After applying it, turn on Tint with primary color under Appearance. Click two cells to connect them; connect the same pair again to remove it, or press Esc to cancel the start.
 Use the image button beside Layers to add an image mask: PNG/JPG/WebP (16 MiB) or SVG (4 MiB). Adjust the threshold/invert in the layer list; select the image to move, scale, rotate or flip it independently. The mask affects all patterns at any density while preserving cell edits. In tile view, drag the frame, corners or top circle to move, resize or rotate. Sources are saved in projects and embedded as SVG masks. Inspect image seams in 3 × 3 view.
 Each layer remembers the parameters, appearance and cell edits for every pattern you use. Switching patterns and saving projects preserve those settings; Reset affects only the current pattern.
-Low Poly uses palette gradients or sampled photo colors. Image layers can switch between masks and image colors for every pattern. Contours offer depth shading with inner/outer shadow controls. These new settings require 1.4.0 or later.
+Low Poly uses palette gradients or sampled photo colors. Image layers can switch between masks and image colors for every pattern. Contours offer depth shading with inner/outer shadow controls. These new settings require 1.5.0 or later.
 Ctrl+S chooses a .ctm destination once, then updates that file. The adjacent arrow or Ctrl+Shift+S opens Save As. Ctrl+O opens one, and Ctrl+E exports. Ctrl+Z undoes; Ctrl+Shift+Z or Ctrl+Y redoes.
 Work and preferences are saved in the data folder beside the app. Before closing, check that the status bar says “Autosaved.” Save a .ctm project separately when moving or backing up a design.
 The project’s own code is MPL-2.0. Transitions.dev and Microsoft WebView2 components retain their respective terms. See LICENSE, LICENSE-SCOPE.md, THIRD-PARTY-NOTICES.txt, and LICENSE-WebView2.txt in the portable package.
 
 日本語
--------
+------
+ユーザープリセットは現在のパターンだけを更新し、別のプロジェクトを開きません。旧プリセットは最初のパターンレイヤーを適用し、元の記録を保持します。未保存の変更がある場合、新規・開く・終了時に保存・保存しない・キャンセルを選択できます。
+PNG・JPG・WebP・SVGをドラッグして画像レイヤーを追加できます。右側に元のサイズを表示します。キャンバス左上のサイズをクリックして編集でき、縦横比の固定も.ctmに保存されます。
+-
 ZIP を展開して C-TextureMaker.exe を起動します。app フォルダーと DLL は実行ファイルの隣に残し、書き込み可能な場所に全体を置いてください。
 アップグレード時は旧版を終了し、data フォルダーを新版アプリの隣にコピーすると、自動保存・設定・形状ライブラリを引き継げます。保存済みの .ctm も直接開けます。
 必要環境は Windows x64、.NET Framework 4.7.2 以降、システムにインストール済みの Microsoft Edge WebView2 Runtime です。オフラインで動作し、サーバー、アカウント、Node.js は不要です。
@@ -49,7 +58,7 @@ PNG は透明または単色背景に対応し、長辺 8192 px、総画素数 3
 ライブラリの鉛筆ボタンで形状名を変更できます。形状の適用後、「外観」で「メインカラーで着色」を有効にできます。2つのセルを順にクリックすると接続し、同じ組を再選択すると削除、Escで始点を解除します。
 左下「レイヤー」横の画像ボタンでマスクを追加：PNG/JPG/WebP（16 MiB）またはSVG（4 MiB）。レイヤー欄でしきい値・反転を調整し、画像を選ぶと独立して移動・拡大縮小・回転・反転できます。密度を変えてもすべてのパターンに同じマスクが適用され、セル編集も保持します。タイル表示で枠・角・上の丸をドラッグして変形できます。元画像はプロジェクトに保存され、SVGマスクにも埋め込まれます。3 × 3で画像の継ぎ目を確認してください。
 レイヤーごとに各パターンのパラメーター・外観・セル編集を記憶し、切り替えやプロジェクト保存後も保持します。リセットは現在のパターンだけに適用されます。
-ローポリはグラデーションや写真の色を面ごとに使用できます。画像レイヤーで白黒マスク／画像の色を切り替え、全パターンに着色できます。等高線では立体塗りと内側／外側の影を設定できます。新設定は1.4.0以降で使用してください。
+ローポリはグラデーションや写真の色を面ごとに使用できます。画像レイヤーで白黒マスク／画像の色を切り替え、全パターンに着色できます。等高線では立体塗りと内側／外側の影を設定できます。新設定は1.5.0以降で使用してください。
 Ctrl+Sは最初に.ctmの保存場所を選び、次回から同じファイルを更新します。隣の矢印かCtrl+Shift+Sで別名保存。Ctrl+O で開き、Ctrl+E で書き出します。Ctrl+Z で元に戻し、Ctrl+Shift+Z または Ctrl+Y でやり直します。
 作業と設定はアプリの隣の data フォルダーに保存されます。終了前にステータスバーの「自動保存済み」を確認し、デザインの移動やバックアップには .ctm プロジェクトを別途保存してください。
 本プロジェクト独自のコードは MPL-2.0 です。Transitions.dev と Microsoft WebView2 には各自の条件が適用されます。LICENSE、LICENSE-SCOPE.md、THIRD-PARTY-NOTICES.txt、ポータブル版の LICENSE-WebView2.txt を参照してください。
