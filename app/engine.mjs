@@ -5,9 +5,14 @@
  */
 import { fitPeriodicBasis, periodicCells, emptyBounds, includeBounds } from './periodic.mjs';
 import { renderSeamlessField } from './seamless-fields.mjs';
+import { normalizeColorMap, createImageColorSampler } from './image-color.mjs';
+import { renderContours } from './contours.mjs';
+import { renderLowPoly } from './low-poly.mjs';
 
 const tr = (zh, en, ja) => ({ zh, en, ja });
 const L = {
+  points: tr('頂點密度','Vertex density','頂点密度'), jitter: tr('形狀變化','Shape variation','形状の変化'), colorVariation: tr('色彩變化','Color variation','色の変化'), gradientAngle: tr('漸層角度','Gradient angle','グラデーションの角度'),
+  depth: tr('立體填色','Depth shading','立体塗り'), shadowRange: tr('陰影範圍','Shadow softness','影のぼかし'), shadowOffset: tr('陰影距離','Shadow distance','影の距離'), shadowAngle: tr('陰影角度','Shadow angle','影の角度'), shadowColor: tr('陰影顏色','Shadow color','影の色'), shadowOpacity: tr('陰影不透明度','Shadow opacity','影の不透明度'), shadowSide: tr('陰影內外','Shadow side','影の位置'),
   amplitude: tr('振幅','Amplitude','振幅'),
   count: tr('數量','Count','数'), minRadius: tr('最小半徑','Minimum radius','最小半径'), maxRadius: tr('最大半徑','Maximum radius','最大半径'), innerWidth: tr('內線寬','Inner line width','内側線幅'), outerWidth: tr('外線寬','Outer line width','外線幅'), sweep: tr('掃掠角度','Sweep','スイープ角度'), startAngle: tr('起始角度','Start angle','開始角度'), lineStyle: tr('線條樣式','Line style','線のスタイル'), dashLength: tr('虛線長度','Dash length','破線の長さ'), dashGap: tr('虛線間距','Dash gap','破線の間隔'), spacing: tr('間距','Spacing','間隔'), maxDot: tr('最大點徑','Maximum dot','最大ドット径'), minDot: tr('最小點徑','Minimum dot','最小ドット径'), gradient: tr('漸層','Gradient','グラデーション'), wave: tr('波形','Wave','波形'), angle: tr('角度','Angle','角度'), arrangement: tr('排列','Arrangement','配置'), shape: tr('形狀','Shape','形状'), overallShape: tr('整體範圍','Overall shape','全体の形'), radius: tr('半徑','Radius','半径'), stepWidth: tr('步進寬度','Step width','ステップ幅'), stepAngle: tr('步進角度','Step angle','ステップ角度'), stepDepth: tr('步進深度','Step depth','ステップ深さ'), bevel: tr('斜角','Bevel','ベベル'), endStyle: tr('端點樣式','End style','端のスタイル'), endLength: tr('端點長度','End length','端の長さ'), endAngle: tr('端點角度','End angle','端の角度'), strokeWidth: tr('線寬','Stroke width','線幅'), length: tr('長度','Length','長さ'), align: tr('對齊','Alignment','配置'), linecap: tr('端點','Line cap','線端'), majorEvery: tr('主刻度週期','Major tick interval','主目盛の間隔'), majorScale: tr('主刻度倍率','Major tick scale','主目盛倍率'), waveFrequency: tr('波動頻率','Wave frequency','波の周波数'), waveAmplitude: tr('波動幅度','Wave amplitude','波の振幅'), noise: tr('雜訊','Noise','ノイズ'), width: tr('寬度','Width','幅'), variation: tr('變化幅度','Variation','変化量'), height: tr('高度','Height','高さ'), frequency: tr('頻率','Frequency','周波数'), phase: tr('相位','Phase','位相'), style: tr('樣式','Style','スタイル'), direction: tr('方向','Direction','方向'), size: tr('尺寸','Size','サイズ'), finite: tr('固定格數','Fixed cell count','セル数を固定'), rows: tr('列數','Rows','行数'), columns: tr('欄數','Columns','列数'), cellSize: tr('格子尺寸','Cell size','セルサイズ'), shapeScale: tr('形狀倍率','Shape scale','形状倍率'), filled: tr('填滿','Filled','塗りつぶし'), showGrid: tr('顯示格線','Show grid','グリッドを表示'), peaks: tr('山峰數','Peak count','ピーク数'), terrainScale: tr('地形尺度','Terrain scale','地形スケール'), sampling: tr('取樣密度','Sampling density','サンプリング密度'), levels: tr('等高線層數','Contour levels','等高線の数'), octaves: tr('細節層數','Octaves','オクターブ数'), roughness: tr('粗糙度','Roughness','粗さ'), roundness: tr('圓角','Roundness','丸み'), shorten: tr('縮短量','Shortening','短縮量'), sides: tr('邊數','Sides','辺の数'), radiusStep: tr('半徑步進','Radius step','半径ステップ'), twist: tr('旋轉扭曲','Twist','ねじれ'), radiusX: tr('水平半徑','Horizontal radius','水平半径'), radiusY: tr('垂直半徑','Vertical radius','垂直半径'), longitudes: tr('經線數','Longitudes','経線数'), latitudes: tr('緯線數','Latitudes','緯線数'), tilt: tr('傾斜','Tilt','傾き'), diagonals: tr('對角線','Diagonals','対角線'), diagonalWidth: tr('對角線寬','Diagonal width','対角線幅'), diagonalStyle: tr('對角線樣式','Diagonal style','対角線のスタイル'), diagonalDashLength: tr('對角線虛線長度','Diagonal dash length','対角線の破線の長さ'), diagonalDashGap: tr('對角線虛線間距','Diagonal dash gap','対角線の破線の間隔'), cornerTrim: tr('交點留白','Intersection gap','交点の余白'), centerTrim: tr('格邊中央留白','Edge midpoint gap','辺の中央の余白'), junction: tr('交點裝飾','Junction mark','交点マーク'), junctionSize: tr('交點尺寸','Junction size','交点サイズ'), junctionWidth: tr('交點線寬','Junction width','交点線幅'), cornerShape: tr('角落裝飾','Corner mark','角のマーク'), cornerSize: tr('角落尺寸','Corner size','角のサイズ'), cornerInset: tr('角落內縮','Corner inset','角の内側余白'), dots: tr('顯示圓點','Show dots','ドットを表示'), dotSize: tr('圓點尺寸','Dot size','ドットサイズ'), dotSpacing: tr('圓點間距','Dot spacing','ドット間隔'), hatch: tr('顯示斜線','Show hatch','ハッチを表示'), hatchWidth: tr('斜線寬度','Hatch width','ハッチ幅'), hatchSpacing: tr('斜線間距','Hatch spacing','ハッチ間隔'), mode: tr('模式','Mode','モード'), innerRadius: tr('內半徑','Inner radius','内半径'), outerRadius: tr('外半徑','Outer radius','外半径'), randomLength: tr('長度隨機量','Random length','長さのランダム量'), end: tr('端點','End cap','線端'), transparent: tr('透明背景','Transparent background','透明背景'),
 };
@@ -22,6 +27,7 @@ const control = (key, type, min, max, step = 1, values = null, labelKey = key) =
 const R = (k, min, max, step = 1, label = k) => control(k, 'range', min, max, step, null, label);
 const S = (k, vals, label = k) => control(k, 'select', 0, 0, 1, vals, label);
 const T = (k, label = k) => control(k, 'toggle', 0, 1, 1, null, label);
+const C = k => control(k, 'color');
 const make = (id, category, name, description, defaults, controls) => ({ id, category, name, description, defaults, controls });
 
 export const PATTERNS = [
@@ -34,7 +40,8 @@ export const PATTERNS = [
   make('lines','pattern',tr('平行線','Parallel lines','平行線'),tr('可調方向與虛線節奏的線場。','A line field with adjustable direction and dash rhythm.','方向と破線のリズムを調整する線場。'),{direction:'horizontal',strokeWidth:2,spacing:24,angle:0,dashLength:16,dashGap:10},[S('direction',['horizontal','vertical','diagonal','dotted']),R('strokeWidth',0.25,256,0.25),R('spacing',4,512),R('angle',-180,180),R('dashLength',1,512),R('dashGap',0,512)]),
   make('dots','pattern',tr('格點','Dot grid','ドットグリッド'),tr('可編輯單格顯示的規則點陣。','Regular editable cells in a dot grid.','セル単位で編集できるドット配列。'),{shape:'circle',arrangement:'grid',spacing:32,size:8,finite:false,rows:12,columns:12},[S('shape',['circle','square','diamond','triangle','star','hexagon','plus','ring','heart']),S('arrangement',['grid','staggered','diagonal']),R('size',1,512),R('spacing',6,512),T('finite'),R('rows',1,80),R('columns',1,80)]),
   make('polygons','pattern',tr('多邊形格網','Polygon lattice','多角形グリッド'),tr('三角或六角圖樣，可填色並逐格編輯。','Editable triangular or hexagonal cells with optional fill.','三角形または六角形のセルを個別編集できます。'),{shape:'hexagon',cellSize:56,shapeScale:0.85,filled:false,strokeWidth:2,showGrid:true},[S('shape',['triangle','hexagon']),R('cellSize',12,512),R('shapeScale',0.1,1,0.01),T('filled'),R('strokeWidth',0.25,256,0.25),T('showGrid')]),
-  make('contour','organic',tr('等高線','Contour field','等高線'),tr('由種子控制的流動地形與有機等高線。','Seeded flowing terrain and organic contour lines.','シードで変化する流れる地形と有機的な等高線。'),{peaks:3,terrainScale:1.75,sampling:72,levels:18,octaves:4,roughness:0.65,strokeWidth:1.5},[R('peaks',1,32),R('terrainScale',0.25,8,0.05),R('sampling',72,256),R('levels',2,64),R('octaves',1,8),R('roughness',0,1,0.01),R('strokeWidth',0.25,256,0.25)]),
+  make('contour','organic',tr('等高線','Contour field','等高線'),tr('由種子控制的流動地形與有機等高線。','Seeded flowing terrain and organic contour lines.','シードで変化する流れる地形と有機的な等高線。'),{peaks:3,terrainScale:1.75,sampling:72,levels:18,octaves:4,roughness:0.65,strokeWidth:1.5,depth:false,shadowRange:16,shadowOffset:10,shadowAngle:45,shadowColor:'#123e3b',shadowOpacity:0.35,shadowSide:'outer'},[R('peaks',1,32),R('terrainScale',0.25,8,0.05),R('sampling',72,256),R('levels',2,64),R('octaves',1,8),R('roughness',0,1,0.01),R('strokeWidth',0.25,256,0.25),T('depth'),S('shadowSide',['outer','inner']),R('shadowRange',0,128),R('shadowOffset',0,256),R('shadowAngle',-180,180),C('shadowColor'),R('shadowOpacity',0,1,0.01)]),
+  make('lowpoly','pattern',tr('低多邊形','Low Poly','ローポリ'),tr('不規則三角面與色彩漸層，可使用圖片逐面取色。','Irregular triangular facets with gradients or sampled image colors.','不規則な三角面にグラデーションや画像の色を適用。'),{points:180,jitter:0.85,colorVariation:0.18,gradientAngle:0},[R('points',16,3000),R('jitter',0,1,0.01),R('colorVariation',0,1,0.01),R('gradientAngle',-180,180)]),
   make('symbols','pattern',tr('符號陣列','Symbol array','シンボル配列'),tr('多種符號與聚焦、循環排列。','Symbol glyphs in uniform, radial or focused layouts.','各種シンボルを均一、放射状、焦点配置。'),{shape:'arrow',arrangement:'uniform',size:20,spacing:72,strokeWidth:2,roundness:0.2,shorten:0.1,filled:false},[S('shape',['arrow','slashes','chevron','bracket','cross','star','circle','square','diamond','triangle','hexagon','ring','heart']),S('arrangement',['uniform','radial','focus','cycle']),R('size',4,512),R('spacing',16,512),R('strokeWidth',0.25,256,0.25),R('roundness',0,1,0.01),R('shorten',0,0.8,0.01),T('filled')]),
   make('nested','radial',tr('巢狀多邊形','Nested polygons','入れ子多角形'),tr('旋轉漸變的同心多邊形。','Nested polygons with twist and optional color gradient.','ねじれと色の変化を備えた多角形の重なり。'),{sides:6,radius:420,radiusStep:28,count:12,twist:0,strokeWidth:2,gradient:true},[R('sides',3,64),R('radius',20,2048),R('radiusStep',2,512),R('count',1,256),R('twist',-180,180),R('strokeWidth',0.25,256,0.25),T('gradient')]),
   make('globe','radial',tr('經緯球體','Globe grid','地球グリッド'),tr('橢圓外框與經緯線。','An elliptical globe outline with longitude and latitude lines.','楕円の外枠と経線、緯線。'),{radiusX:360,radiusY:280,longitudes:12,latitudes:8,strokeWidth:2,tilt:0},[R('radiusX',40,2048),R('radiusY',40,2048),R('longitudes',2,128),R('latitudes',1,128),R('strokeWidth',0.25,256,0.25),R('tilt',-90,90)]),
@@ -134,6 +141,8 @@ export function resetLayerPattern(layer) {
 }
 const IMAGE_MASK_FIELDS = new Set(['id','type','name','visible','image','imageWidth','imageHeight','threshold','invert','fit','scale','rotation','offsetX','offsetY','flipX','flipY']);
 const IMAGE_MASK_REQUIRED = [...IMAGE_MASK_FIELDS];
+IMAGE_MASK_FIELDS.add('mode');
+IMAGE_MASK_FIELDS.add('colorMap');
 
 const IMAGE_MASK_MAX_LENGTH = 22400000;
 const IMAGE_MASK_VALIDATION_CACHE_CHARS = 24000000;
@@ -210,11 +219,14 @@ function normalizeImageMaskLayer(raw) {
   assert(typeof raw.rotation === 'number' && Number.isFinite(raw.rotation) && raw.rotation >= -180 && raw.rotation <= 180, 'Invalid image mask rotation');
   for (const key of ['offsetX','offsetY']) assert(typeof raw[key] === 'number' && Number.isFinite(raw[key]) && raw[key] >= -32768 && raw[key] <= 32768, `Invalid image mask ${key}`);
   assert(typeof raw.flipX === 'boolean' && typeof raw.flipY === 'boolean', 'Invalid image mask flip flags');
-  return { id:raw.id, type:'imageMask', name, visible:raw.visible, image:validateImageMaskDataImage(raw.image), imageWidth:raw.imageWidth, imageHeight:raw.imageHeight, threshold:raw.threshold, invert:raw.invert, fit:raw.fit, scale:raw.scale, rotation:raw.rotation, offsetX:raw.offsetX, offsetY:raw.offsetY, flipX:raw.flipX, flipY:raw.flipY };
+  const mode=raw.mode??'mask',colorMap=normalizeColorMap(raw.colorMap);
+  assert(mode==='mask'||mode==='color','Invalid image mode');
+  assert(mode!=='color'||colorMap,'Image color mode requires a color map');
+  return { mode, colorMap, id:raw.id, type:'imageMask', name, visible:raw.visible, image:validateImageMaskDataImage(raw.image), imageWidth:raw.imageWidth, imageHeight:raw.imageHeight, threshold:raw.threshold, invert:raw.invert, fit:raw.fit, scale:raw.scale, rotation:raw.rotation, offsetX:raw.offsetX, offsetY:raw.offsetY, flipX:raw.flipX, flipY:raw.flipY };
 }
 
-export function createImageMaskLayer({ id = `image-mask-${Date.now().toString(36)}-${(++layerCounter).toString(36)}`, name = 'Image mask', image, imageWidth, imageHeight }) {
-  return normalizeImageMaskLayer({ id, type:'imageMask', name, visible:true, image, imageWidth, imageHeight, threshold:128, invert:false, fit:'contain', scale:1, rotation:0, offsetX:0, offsetY:0, flipX:false, flipY:false });
+export function createImageMaskLayer({ id = `image-mask-${Date.now().toString(36)}-${(++layerCounter).toString(36)}`, name = 'Image layer', image, imageWidth, imageHeight, mode = 'mask', colorMap = null }) {
+  return normalizeImageMaskLayer({ mode, colorMap, id, type:'imageMask', name, visible:true, image, imageWidth, imageHeight, threshold:128, invert:false, fit:'contain', scale:1, rotation:0, offsetX:0, offsetY:0, flipX:false, flipY:false });
 }
 
 export function isImageMaskLayer(layer) { return layer?.type === 'imageMask'; }
@@ -261,6 +273,8 @@ function normalizeParams(type, value) {
     if (c.type === 'range') {
       assert(typeof v === 'number' && Number.isFinite(v), `Invalid parameter ${c.key}`);
       out[c.key] = Math.min(c.max, Math.max(c.min, v));
+    } else if (c.type === 'color') {
+      assert(hex(v), `Invalid parameter ${c.key}`); out[c.key] = v;
     } else if (c.type === 'toggle') {
       assert(typeof v === 'boolean', `Invalid parameter ${c.key}`); out[c.key] = v;
     } else {
@@ -509,47 +523,7 @@ function seamlessPoints(layer,doc,preview,metrics) {
   metrics.world=true;if(Number.isFinite(bounds.minX))metrics.bounds=bounds;
   return out.join('');
 }
-function stitchContourSegments(segments,w,h,periodic) {
-  if(!segments.length)return [];
-  const epsX=w*1e-7,epsY=h*1e-7,qx=Math.max(1,Math.round(w/epsX)),qy=Math.max(1,Math.round(h/epsY));
-  const key=([x,y])=>{let ix=Math.round(x/epsX),iy=Math.round(y/epsY);if(periodic){ix=((ix%qx)+qx)%qx;iy=((iy%qy)+qy)%qy;}return `${ix}:${iy}`;};
-  const links=new Map(),visited=new Uint8Array(segments.length);
-  for(let i=0;i<segments.length;i++)for(let end=0;end<2;end++){const k=key(segments[i][end]),list=links.get(k)??[];list.push([i,end]);links.set(k,list);}
-  const unwrap=(p,near)=>periodic?[p[0]+Math.round((near[0]-p[0])/w)*w,p[1]+Math.round((near[1]-p[1])/h)*h]:p;
-  const chains=[];
-  const walk=(firstId,firstEnd)=>{
-    let id=firstId,end=firstEnd,start=segments[id][end],current=start,closed=false,used=0;const startKey=key(start),points=[start];
-    while(id!==undefined&&!visited[id]&&used<=segments.length){visited[id]=1;used++;const raw=segments[id][1-end],next=unwrap(raw,current);if(Math.hypot(next[0]-current[0],next[1]-current[1])>1e-7)points.push(next);current=next;const k=key(raw);if(k===startKey&&points.length>2){closed=true;break;}const candidate=(links.get(k)??[]).find(([edge])=>!visited[edge]);if(!candidate)break;[id,end]=candidate;}
-    if(points.length>1)chains.push({points,closed});
-  };
-  for(let id=0;id<segments.length;id++)if(!visited[id])for(let end=0;end<2;end++){if((links.get(key(segments[id][end]))??[]).length===1){walk(id,end);break;}}
-  for(let id=0;id<segments.length;id++)if(!visited[id])walk(id,0);
-  return chains;
-}
-function contourCurve(chain,bounds) {
-  const points=chain.points,closed=chain.closed,unique=closed?points.slice(0,-1):points,n=unique.length;
-  if(n<2)return '';
-  const delta=closed?[points.at(-1)[0]-points[0][0],points.at(-1)[1]-points[0][1]]:[0,0];
-  const at=i=>{
-    if(closed){const cycle=Math.floor(i/n),index=i-cycle*n,p=unique[index];return [p[0]+cycle*delta[0],p[1]+cycle*delta[1]];}
-    if(i<0)return [unique[0][0]+i*(unique[0][0]-unique[1][0]),unique[0][1]+i*(unique[0][1]-unique[1][1])];
-    if(i>=n)return [unique[n-1][0]+(i-n+1)*(unique[n-1][0]-unique[n-2][0]),unique[n-1][1]+(i-n+1)*(unique[n-1][1]-unique[n-2][1])];
-    return unique[i];
-  };
-  const interval=(a,b)=>Math.max(1e-5,Math.sqrt(Math.hypot(b[0]-a[0],b[1]-a[1])));
-  const include=p=>{bounds.minX=Math.min(bounds.minX,p[0]);bounds.maxX=Math.max(bounds.maxX,p[0]);bounds.minY=Math.min(bounds.minY,p[1]);bounds.maxY=Math.max(bounds.maxY,p[1]);};
-  const count=closed?n:n-1;let d=`M${xy(...unique[0])}`;include(unique[0]);
-  for(let i=0;i<count;i++){
-    const p0=at(i-1),p1=at(i),p2=at(i+1),p3=at(i+2),h1=interval(p0,p1),h2=interval(p1,p2),h3=interval(p2,p3);
-    const dx1=(p1[0]-p0[0])/h1,dy1=(p1[1]-p0[1])/h1,dx2=(p2[0]-p1[0])/h2,dy2=(p2[1]-p1[1])/h2,dx3=(p3[0]-p2[0])/h3,dy3=(p3[1]-p2[1])/h3;
-    const m1x=(dx1*h2+dx2*h1)/(h1+h2)*h2,m1y=(dy1*h2+dy2*h1)/(h1+h2)*h2,m2x=(dx2*h3+dx3*h2)/(h2+h3)*h2,m2y=(dy2*h3+dy3*h2)/(h2+h3)*h2;
-    const c1=[p1[0]+m1x/3,p1[1]+m1y/3],c2=[p2[0]-m2x/3,p2[1]-m2y/3];d+=`C${xy(...c1)} ${xy(...c2)} ${xy(...p2)}`;include(c1);include(c2);include(p2);
-  }
-  if(closed&&Math.hypot(...delta)<1e-7)d+='Z';
-  return d;
-}
-
-function renderPattern(layer, doc, preview, metrics = {}) {
+function renderPattern(layer, doc, preview, metrics = {}, effects = {}) {
   const {type,params:p,color:c,secondary:s}=layer, w=doc.width,h=doc.height,cx=w/2,cy=h/2, hidden=hiddenSet(layer), random=rng(hashSeed(doc.seed,layer.id));
   if(doc.seamless){
     if(['halftone','dots','symbols'].includes(type))return seamlessPoints(layer,doc,preview,metrics);
@@ -643,37 +617,10 @@ function renderPattern(layer, doc, preview, metrics = {}) {
     }
     if(p.showGrid&&edges.size)add(`<path d="${[...edges.values()].join('')}" fill="none" stroke="${s}" stroke-width="${fmt(Math.max(.5,p.strokeWidth*.5))}" opacity=".42"/>`);
     for(const cell of cells){if(layer.customMotif)add(motifImage(layer,preview,cell.cellId,cell.center[0],cell.center[1],cell.inradius/Math.SQRT2,cell.isHidden));else add(polygon(cell.points,p.filled?c:'none',c,cell.strokeWidth??p.strokeWidth,attrs(layer,preview,cell.cellId)+cellGhost(preview,cell.isHidden)+cellCenter(preview,cell.center[0],cell.center[1])));}
+  } else if(type==='lowpoly') {
+    const result=renderLowPoly(layer,doc,{sampleColor:effects.sampleColor});metrics.bounds=result.bounds;metrics.world=result.world;out.push(result.content);
   } else if(type==='contour') {
-    const angle=layer.rotation*Math.PI/180,period=doc.seamless?fitPeriodicBasis([w,0],[0,h],w,h,angle,layer.scale):null;
-    const n=Math.min(256,Math.max(72,p.sampling)*Math.max(1,Math.ceil(Math.sqrt(period?.count??1)))),rand=rng(hashSeed(doc.seed,layer.id)),scale=Math.sqrt(p.terrainScale),peaks=Array.from({length:p.peaks},()=>({x:rand(),y:rand(),sx:(.12+rand()*.08)/scale,sy:(.12+rand()*.08)/scale,amp:(rand()>.35?1:-1)*(.42+rand()*.38)})),detailCount=Math.min(24,p.peaks*Math.max(0,p.octaves-1));
-    for(let i=0;i<detailCount;i++)peaks.push({x:rand(),y:rand(),sx:(.025+rand()*.035)/scale,sy:(.025+rand()*.035)/scale,amp:(rand()>.5?1:-1)*(.08+rand()*.12)});
-    const terms=[];
-    for(let i=0;i<p.octaves;i++){const k=Math.min(10,Math.max(1,Math.round(p.peaks*(.35+i*.35)*scale))),kx=k,ky=Math.max(1,Math.min(10,Math.round(k*(.75+rand()*.5)))),phaseX=rand()*Math.PI*2,phaseY=rand()*Math.PI*2,phase=rand()*Math.PI*2,amp=.26*Math.pow(p.roughness,i);terms.push([kx,ky,phaseX,phaseY,phase,amp]);}
-    const field=(u,v)=>{let z=0;for(const peak of peaks){const dx=Math.sin(Math.PI*(u-peak.x))/peak.sx,dy=Math.sin(Math.PI*(v-peak.y))/peak.sy;z+=peak.amp*Math.exp(-.5*(dx*dx+dy*dy));}for(const [kx,ky,px,py,ph,amp] of terms)z+=amp*(Math.sin(2*Math.PI*kx*u+px)*Math.cos(2*Math.PI*ky*v+py)+.35*Math.sin(2*Math.PI*(ky*u-kx*v)+ph));return z;};
-    const sample=(u,v)=>{
-      if(!period)return field(u,v);
-      const ca=Math.cos(angle),sa=Math.sin(angle),ox=cx-layer.scale*(ca*cx-sa*cy),oy=cy-layer.scale*(sa*cx+ca*cy),dx=u*w-ox,dy=v*h-oy,U=period.u,V=period.v,det=U[0]*V[1]-V[0]*U[1];
-      return field((V[1]*dx-V[0]*dy)/det,(-U[1]*dx+U[0]*dy)/det);
-    };
-    const grid=Array.from({length:n+1},(_,j)=>Array.from({length:n+1},(_,i)=>sample(i/n,j/n)));let lo=Infinity,hi=-Infinity;for(const row of grid)for(const v of row){lo=Math.min(lo,v);hi=Math.max(hi,v);}
-    const edge=(x1,y1,v1,x2,y2,v2,level)=>{const t=(level-v1)/(v2-v1||1e-9);return [x1+(x2-x1)*t,y1+(y2-y1)*t];};
-    const curveBounds={minX:Infinity,minY:Infinity,maxX:-Infinity,maxY:-Infinity};
-    for(let levelIndex=1;levelIndex<=p.levels;levelIndex++){
-      const level=lo+(hi-lo)*levelIndex/(p.levels+1),segments=[];
-      for(let j=0;j<n;j++)for(let i=0;i<n;i++){
-        const x0=w*i/n,x1=w*(i+1)/n,y0=h*j/n,y1=h*(j+1)/n,v=[grid[j][i],grid[j][i+1],grid[j+1][i+1],grid[j+1][i]],pts=[];
-        if((v[0]<level)!==(v[1]<level))pts.push(edge(x0,y0,v[0],x1,y0,v[1],level));
-        if((v[1]<level)!==(v[2]<level))pts.push(edge(x1,y0,v[1],x1,y1,v[2],level));
-        if((v[2]<level)!==(v[3]<level))pts.push(edge(x1,y1,v[2],x0,y1,v[3],level));
-        if((v[3]<level)!==(v[0]<level))pts.push(edge(x0,y1,v[3],x0,y0,v[0],level));
-        if(pts.length===2)segments.push(pts);
-        else if(pts.length===4){const center=(v[0]+v[1]+v[2]+v[3])/4,high=center>=level,pairs=(v[0]>=level)===high?[[0,1],[2,3]]:[[0,3],[1,2]];for(const [a,b] of pairs)segments.push([pts[a],pts[b]]);}
-      }
-      const chains=stitchContourSegments(segments,w,h,doc.seamless),paths=chains.map(chain=>contourCurve(chain,curveBounds)).filter(Boolean);
-      if(paths.length)add(`<path d="${paths.join('')}" fill="none" stroke="${c}" stroke-width="${fmt(p.strokeWidth*(doc.seamless?layer.scale:1))}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    }
-    if(Number.isFinite(curveBounds.minX))metrics.bounds=curveBounds;
-    if(doc.seamless)metrics.world=true;
+    const result=renderContours(layer,doc,{fillPaint:effects.fillPaint});metrics.bounds=result.bounds;metrics.world=result.world;out.push(result.content);
   } else if(type==='symbols') {
     let gap=capStep(p.spacing,w,h,600),rows=Math.ceil(h/gap),cols=Math.ceil(w/gap),i=0;
     for(let r=0;r<rows;r++)for(let col=0;col<cols;col++){const x=(col+.5)*gap,y=(r+.5)*gap;let ang=0;if(p.arrangement==='focus')ang=Math.atan2(cy-y,cx-x)*180/Math.PI;if(p.arrangement==='radial')ang=Math.atan2(y-cy,x-cx)*180/Math.PI;if(p.arrangement==='cycle')ang=(i*137.5)%360;const z=p.size/2*(1-p.shorten),shape=layer.customMotif?motifImageElement(layer,x,y,z):symbolGlyph(p,x,y,c);add(`<g transform="rotate(${fmt(ang)} ${fmt(x)} ${fmt(y)})">${shape}</g>`);i++;}
@@ -702,8 +649,9 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
   const doc=normalizeDocument(document);assert(repeat===1||repeat===3,'repeat must be 1 or 3');
   const W=doc.width,H=doc.height,fullW=W*repeat,fullH=H*repeat,parts=[];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${fullW}" height="${fullH}" viewBox="0 0 ${fullW} ${fullH}"${preview?' data-preview="true"':''}>`);
-  const visible=doc.layers.filter(layer=>!isImageMaskLayer(layer)&&layer.visible&&layer.opacity>0),imageMasks=doc.layers.filter(layer=>isImageMaskLayer(layer)&&layer.visible);
+  const visible=doc.layers.filter(layer=>!isImageMaskLayer(layer)&&layer.visible&&layer.opacity>0),imageMasks=doc.layers.filter(layer=>isImageMaskLayer(layer)&&layer.visible&&layer.mode!=='color'),colorLayer=doc.layers.findLast(layer=>isImageMaskLayer(layer)&&layer.visible&&layer.mode==='color'),colorGeometry=colorLayer?imageMaskGeometry(colorLayer,doc):null,sampleColor=colorLayer?createImageColorSampler(colorLayer,colorGeometry):null;
   parts.push('<defs><clipPath id="tile-base"><rect x="0" y="0" width="'+W+'" height="'+H+'"/></clipPath>');
+  if(colorLayer&&visible.some(layer=>layer.type!=='lowpoly'))parts.push(`<g id="image-color-source"><image href="${esc(colorLayer.image)}" x="${fmt(-colorGeometry.width/2)}" y="${fmt(-colorGeometry.height/2)}" width="${fmt(colorGeometry.width)}" height="${fmt(colorGeometry.height)}" preserveAspectRatio="none" transform="${esc(colorGeometry.transform)}"/></g>`);
   const imageMaskIds=[];
   for(const layer of imageMasks){
     const geometry=imageMaskGeometry(layer,doc),filterId=`image-mask-filter-${esc(layer.id)}`,maskId=`image-mask-${esc(layer.id)}`,cutoff=Math.min(255,Math.floor(layer.threshold*256/255)),table=Array.from({length:256},(_,index)=>((layer.invert?index>cutoff:index<=cutoff)?'1':'0')).join(' ');
@@ -716,10 +664,19 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
     for(let index=imageMaskIds.length-1;index>=0;index--)content=`<g mask="url(#${imageMaskIds[index]})">${content}</g>`;
     parts.push(`<mask id="all-image-masks" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}" mask-type="alpha">${content}</mask>`);
   }
-  const sources=new Map(),copyRanges=new Map();
+  const sources=new Map(),copyRanges=new Map(),projectedColors=new Set();
   for(const original of visible){
     const layer=fitSeamlessMotif(original,doc);
-    const metrics={};let content=renderPattern(layer,doc,preview,metrics);if(!content)continue;
+    let fillPaint=null;
+    if(colorLayer&&layer.type==='contour'&&layer.params.depth){
+      const paintId=`image-color-paint-${layer.id}`,rotation=doc.seamless?0:layer.rotation,scale=doc.seamless?1:layer.scale;
+      const ox=doc.seamless?wrappedOffset(layer.offsetX,W):layer.offsetX,oy=doc.seamless?wrappedOffset(layer.offsetY,H):layer.offsetY;
+      const inverse=`translate(${W/2} ${H/2}) scale(${transformNumber(1/scale)}) rotate(${fmt(-rotation)}) translate(${-W/2} ${-H/2}) translate(${fmt(-ox)} ${fmt(-oy)})`;
+      parts.push(`<pattern id="${paintId}" x="0" y="0" width="${W}" height="${H}" patternUnits="userSpaceOnUse" patternContentUnits="userSpaceOnUse" patternTransform="${inverse}"><use href="#image-color-source"/></pattern>`);
+      fillPaint=`url(#${paintId})`;
+    }
+    const metrics={};let content=renderPattern(layer,doc,preview,metrics,{sampleColor,fillPaint});if(!content)continue;
+    content=content.replace(/<defs>([\s\S]*?)<\/defs>/g,(_,definitions)=>{parts.push(definitions);return '';});
     content+=renderCellLinks(layer,doc,metrics);
     const renderedLayer=metrics.world?{...layer,rotation:0,scale:1}:layer;
     const cx=W/2,cy=H/2,range=doc.seamless?seamlessCopyRange(renderedLayer,doc,metrics.bounds):{x0:0,x1:0,y0:0,y1:0,ox:layer.offsetX,oy:layer.offsetY},transform=`translate(${fmt(range.ox)} ${fmt(range.oy)}) translate(${fmt(cx)} ${fmt(cy)}) rotate(${fmt(renderedLayer.rotation)}) scale(${transformNumber(renderedLayer.scale)}) translate(${fmt(-cx)} ${fmt(-cy)})`,source=`source-${layer.id}`;
@@ -733,6 +690,12 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
       const extent=Math.hypot(cx,cy)*Math.max(1,layer.scale);
       parts.push(`<mask id="mask-${esc(layer.id)}" maskUnits="userSpaceOnUse" x="${fmt(cx-extent)}" y="${fmt(cy-extent)}" width="${fmt(2*extent)}" height="${fmt(2*extent)}" mask-type="alpha"><image href="${esc(layer.mask)}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="none"${maskTransform}/></mask>`);
     }
+    if(colorLayer&&layer.type!=='lowpoly'&&!fillPaint){
+      const geometry=content.replace(/ data-(?:cell|layer|cx|cy|hidden)="[^"]*"/g,''),masked=layer.mask?`<g mask="url(#mask-${esc(layer.id)})">${geometry}</g>`:geometry,copies=[];
+      for(let oy=range.y0;oy<=range.y1;oy++)for(let ox=range.x0;ox<=range.x1;ox++)copies.push(`<g transform="translate(${fmt(ox*W)} ${fmt(oy*H)})"><g transform="${transform}">${masked}</g></g>`);
+      parts.push(`<mask id="image-color-shape-${layer.id}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}" mask-type="alpha">${copies.join('')}</mask>`);
+      projectedColors.add(layer.id);
+    }
     copyRanges.set(layer.id,range);
     sources.set(layer.id,source);
     if(repeat===3)parts.push(`<g id="${source}" opacity="1" transform="${transform}">${layer.mask?`<g mask="url(#mask-${esc(layer.id)})">${content}</g>`:content}</g>`);
@@ -745,11 +708,17 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
     if(imageMaskIds.length)parts.push('<g mask="url(#all-image-masks)">');
     for(const layer of visible){const source=sources.get(layer.id),range=copyRanges.get(layer.id);if(!source||!range)continue;
       parts.push(`<g opacity="${fmt(layer.opacity)}">`);
+      if(projectedColors.has(layer.id)){
+        parts.push(`<use href="#image-color-source" mask="url(#image-color-shape-${layer.id})"/>`);
+        if(!preview){parts.push('</g>');continue;}
+        parts.push('<g opacity="0">');
+      }
       for(let oy=range.y0;oy<=range.y1;oy++)for(let ox=range.x0;ox<=range.x1;ox++){
         const px=ox*W,py=oy*H;
         if(repeat===3)parts.push(`<use href="#${source}" x="${fmt(px)}" y="${fmt(py)}"${preview?` data-layer="${esc(layer.id)}"`:''}/>`);
         else {const mask=layer.mask?`<g mask="url(#mask-${esc(layer.id)})">${source.content}</g>`:source.content;parts.push(`<g opacity="1" transform="translate(${fmt(px)} ${fmt(py)})"><g transform="${source.transform}">${mask}</g></g>`);}
       }
+      if(projectedColors.has(layer.id))parts.push('</g>');
       parts.push('</g>');
     }
     if(imageMaskIds.length)parts.push('</g>');

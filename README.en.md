@@ -1,6 +1,6 @@
 # C-TextureMaker
 
-An offline Windows pattern studio for creating transparent, seamless-ready assets from 15 adjustable procedural pattern families, with SVG and PNG export.
+An offline Windows pattern studio for creating transparent, seamless-ready assets from 16 adjustable procedural pattern families, with SVG and PNG export.
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
@@ -8,7 +8,7 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 
 [See what's new in 1.3.0](docs/releases/v1.3.0.md#english)
 
-**1.3.1 source update**: Each layer remembers settings for every pattern and saves them with the project. Maximized window gaps and project-title alignment are fixed. A public 1.3.1 download has not been released yet.
+**1.4.0 source update**: Low Poly, image coloring, contour depth and improved Save / Save As are now available in source. [See the highlights](docs/releases/v1.4.0.md#english). The published GitHub download is still 1.3.0.
 
 ![Workspace in Traditional Chinese with the dark theme](docs/media/workspace-zh-dark.png)
 
@@ -31,7 +31,7 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 
 ## Features
 
-- 15 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, symbol arrays, nested polygons, a globe, engineering grids, and radial beams.
+- 16 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, and radial beams.
 - Adjust shape, color, rotation, scale, and position live. Use layers, presets, undo/redo, and .ctm projects. Projects support up to 16 layers; work and preferences are saved locally.
 - Seamless mode arranges patterns to the canvas tile period. The 3 × 3 preview helps inspect seams; exports remain a single tile.
 - Separate cursor and hand tools; hold Space and drag to pan temporarily. Dot and polygon cells support adjustable paint/erase brushes with one undo per stroke.
@@ -58,7 +58,13 @@ Use the image button beside Layers to add a mask. It accepts PNG/JPG/WebP (up to
 
 To remove a connection, connect the same two cells again. Esc cancels the start point.
 
-1.3.0 opens older .ctm projects. Projects with image masks require 1.3.0 or later. Earlier one-time image conversions keep their cell edits; reimport the source as a mask layer to adjust it independently.
+Image layers can switch between Black / white mask and Image colors while preserving their threshold settings. The topmost visible color layer colors all patterns: Low Poly samples a flat color per triangle; other patterns project the image through their shapes. Density, rotation and image transforms update the result live. Use Color from image under Appearance to add a color layer directly.
+
+Low Poly offers vertex density, shape variation, primary / secondary colors, gradient angle and color variation. Contour Depth shading adds inner / outer shadows with softness, distance, angle, color and opacity; turn it off to return to contour lines.
+
+Save project asks for a location once, then updates that file. Use the adjacent arrow or Ctrl+Shift+S for Save As. Opening a .ctm also sets its save destination. Each layer remembers every pattern's settings and cell edits, including across project saves; Reset affects only the current pattern.
+
+1.4.0 opens older projects. Projects with the new pattern, image colors or depth settings require 1.4.0 or later.
 
 ## Build from source
 
@@ -70,7 +76,7 @@ Builds require Node.js/npm and Python. These commands install development depend
     powershell -NoProfile -ExecutionPolicy Bypass -File .\build-desktop.ps1
     python scripts/package.py
 
-For browser interaction regression tests, install Playwright and Microsoft Edge, run `npm run build`, then `node tests/editor.browser.cjs`.
+For browser interaction regression tests, install Playwright and Microsoft Edge, run `npm run build`, then `node tests/editor.browser.cjs` / `node tests/features.browser.cjs`.
 
 On the first desktop build, the script downloads the pinned WebView2 SDK from NuGet. The packaged app does not need build tools or a development server.
 

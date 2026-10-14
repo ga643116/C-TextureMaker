@@ -39,6 +39,8 @@ function customize(layer, index) {
     const current = layer.params[control.key];
     if (control.type === 'range') {
       layer.params[control.key] = current === control.min ? control.max : control.min;
+    } else if (control.type === 'color') {
+      layer.params[control.key] = color(index + 80);
     } else if (control.type === 'toggle') {
       layer.params[control.key] = !current;
     } else {
@@ -81,8 +83,8 @@ function documentWithCachedPattern(activeType = 'dots', cachedType = 'grid') {
   return document;
 }
 
-test('all fifteen patterns restore their independent full settings after switching away and back', () => {
-  assert.equal(patternIds.length, 15);
+test('all sixteen patterns restore their independent full settings after switching away and back', () => {
+  assert.equal(patternIds.length, 16);
   let layer = createLayer(patternIds[0], 'round-trip');
   layer.visible = false;
   const expected = new Map();
@@ -181,7 +183,7 @@ test('pattern snapshots survive JSON document normalization, legacy v1 files, an
   document.layers = [populatedLayer('persisted-layer')];
   const raw = JSON.parse(JSON.stringify(document));
   const normalized = normalizeDocument(raw);
-  assert.equal(Object.keys(normalized.layers[0].patternSettings).length, 14);
+  assert.equal(Object.keys(normalized.layers[0].patternSettings).length, patternIds.length - 1);
   assert.deepEqual(normalizeDocument(JSON.parse(JSON.stringify(normalized))), normalized);
   assert.deepEqual(Object.keys(normalized.layers[0].patternSettings).sort(), patternIds.filter(type => type !== normalized.layers[0].type).sort());
   raw.layers[0].patternSettings.concentric.params.count = -1;

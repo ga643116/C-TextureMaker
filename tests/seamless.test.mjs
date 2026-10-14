@@ -96,7 +96,7 @@ test('seamless polygon outlines auto-fit oversized strokes without touching neig
   }
 });
 
-test('all fifteen seamless generators preserve single-layer opacity and export the same repeated tile',()=>{
+test('all sixteen seamless generators preserve single-layer opacity and export the same repeated tile',()=>{
   const width=192,height=224,parts=[],columns=5;
   for(const [i,pattern] of PATTERNS.entries()){
     const d=setup(pattern.id);d.width=width;d.height=height;d.layers[0].id=`opacity-${pattern.id}`;

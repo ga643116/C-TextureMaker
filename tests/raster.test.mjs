@@ -13,13 +13,19 @@ const raster=svg=>PNG.sync.read(new Resvg(svg).render().asPng());
 const alpha=(png,x,y)=>png.data[(y*png.width+x)*4+3];
 const setup=type=>{const d=createDocument();d.layers=[createLayer(type,'raster-layer')];d.layers[0].color='#253020';return d;};
 
-test('all fifteen default patterns produce visible artwork with real transparent pixels',()=>{
+test('all sixteen patterns produce visible artwork and preserve unpainted transparency',()=>{
   for(const p of PATTERNS){
     const image=raster(renderSVG(setup(p.id)));
     let painted=0,empty=0;
     for(let i=3;i<image.data.length;i+=4){if(image.data[i]>0)painted++;else empty++;}
     assert.ok(painted>500,`${p.id}: artwork must not be blank`);
-    assert.ok(empty>500,`${p.id}: transparent export must retain alpha`);
+    if(p.id==='lowpoly'){
+      assert.equal(empty,0,'default Low Poly intentionally fills the entire tile');
+      const inset=setup(p.id);inset.layers[0].scale=.5;
+      const scaled=raster(renderSVG(inset));
+      assert.equal(alpha(scaled,0,0),0,'scaling a filled mesh leaves a transparent exterior');
+      assert.equal(alpha(scaled,512,512),255,'the scaled mesh remains filled');
+    }else assert.ok(empty>500,`${p.id}: transparent export must retain alpha`);
   }
 });
 

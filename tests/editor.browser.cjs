@@ -14,11 +14,12 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
 
 (async()=>{
  const {createDocument,createLayer,PATTERNS}=await import(pathToFileURL(path.join(root,'app/engine.mjs')));
+ const engineBundle=require('esbuild').buildSync({entryPoints:[path.join(root,'app/engine.mjs')],bundle:true,write:false,format:'esm',platform:'browser'}).outputFiles[0].contents;
  const server=http.createServer(async(req,res)=>{
   try{
    const file=path.resolve(root,'.'+decodeURIComponent(new URL(req.url,'http://localhost').pathname));
    if(!file.startsWith(root+path.sep))throw new Error('Outside fixture root');
-   res.setHeader('Content-Type',mime[path.extname(file)]||'application/octet-stream');res.end(await fs.readFile(file));
+   res.setHeader('Content-Type',mime[path.extname(file)]||'application/octet-stream');res.end(file===path.join(root,'app/engine.mjs')?engineBundle:await fs.readFile(file));
   }catch{res.statusCode=404;res.end();}
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -141,7 +142,7 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
   imageDoc=await savedDocument();assert.equal(imageDoc.layers.filter(layer=>layer.type==='imageMask').length,1,'selecting a pattern while a mask is selected preserves the mask');assert.equal(imageDoc.layers.filter(layer=>layer.type!=='imageMask').length,1,'pattern selection replaces the last pattern');assert.equal(imageDoc.layers.find(layer=>layer.type!=='imageMask').type,'polygons');
   await page.locator('[data-action=add-layer]').click();await page.locator('[data-pattern=dots]').click();
   imageDoc=await savedDocument();assert.equal(imageDoc.layers.filter(layer=>layer.type==='imageMask').length,1);assert.equal(imageDoc.layers.filter(layer=>layer.type!=='imageMask').length,2,'image mask remains a separate layer across pattern edits');
-  await selectLayer(maskId).click();assert.equal(await page.locator('#mask-overlay').isVisible(),true,'selected mask exposes transform handles in single view');await fs.mkdir(path.join(root,'.tools','validation-1.3.0'),{recursive:true});await page.screenshot({path:path.join(root,'.tools','validation-1.3.0','persistent-image-mask.png'),fullPage:true});
+  await selectLayer(maskId).click();assert.equal(await page.locator('#mask-overlay').isVisible(),true,'selected mask exposes transform handles in single view');await fs.mkdir(path.join(root,'.tools','validation-1.4.0'),{recursive:true});await page.screenshot({path:path.join(root,'.tools','validation-1.4.0','persistent-image-mask.png'),fullPage:true});
   let masked=await readMaskRaster();
   assert.ok(alphaPixels(masked,16,40,240,240)>0,'dark source region retains artwork');assert.equal(alphaPixels(masked,272,40,496,240),0,'white source region removes artwork from every pattern layer');assert.equal(alphaPixels(masked,0,0,512,24),0,'transparent source pixels remain empty');
   const baseAlpha=alphaTotal(masked);await page.locator('[data-action=layer-down]').click();let reordered=await readMaskRaster();assert.equal(alphaTotal(reordered),baseAlpha,'mask intersection is independent of layer stacking');
@@ -184,7 +185,7 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
   await page.mouse.click(editable.x,editable.y);await page.waitForFunction(({layerId,cellId})=>[...document.querySelectorAll('#artboard [data-cell]')].some(el=>el.dataset.layer===layerId&&el.dataset.cell===cellId&&el.hasAttribute('data-hidden')),{layerId:dotsLayer.id,cellId:editable.id});
   imageDoc=await savedDocument();const editedDots=imageDoc.layers.find(layer=>layer.id===dotsLayer.id);assert.ok(editedDots.hiddenCells.length>0,'manual cell edits remain in hiddenCells beside the image mask');
   const manualCells=[...editedDots.hiddenCells];await selectLayer(maskId).click();await visibility(maskId).click();imageDoc=await savedDocument();assert.deepEqual(imageDoc.layers.find(layer=>layer.id===dotsLayer.id).hiddenCells,manualCells,'mask visibility changes preserve manual cell edits');
-  const patternTypes=PATTERNS.map(pattern=>pattern.id);assert.equal(patternTypes.length,15,'coverage includes every production pattern');
+  const patternTypes=PATTERNS.map(pattern=>pattern.id);assert.equal(patternTypes.length,16,'coverage includes every production pattern');
   const browserMaskCoverage=await page.evaluate(async({types,source})=>{
    const {renderSVG,createDocument,createLayer,createImageMaskLayer}=await import('/app/engine.mjs'),canvas=document.createElement('canvas');
    // Keep repeated canvas readbacks on one backend so antialiasing comparisons stay deterministic.
@@ -198,13 +199,13 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
    const repeatDoc=documentFor('polygons',128,true);repeatDoc.seamless=true;Object.assign(repeatDoc.layers[0].params,{cellSize:48,shape:'hexagon',filled:true});const singlePixels=await rasterPixels(renderSVG(repeatDoc,{repeat:1}),128,128),repeatPixels=await rasterPixels(renderSVG(repeatDoc,{repeat:3}),384,384);let mismatchedChannels=0;for(let tileY=0;tileY<3;tileY++)for(let tileX=0;tileX<3;tileX++)for(let y=0;y<128;y++)for(let x=0;x<128;x++){const sourceIndex=(y*128+x)*4,targetIndex=((tileY*128+y)*384+tileX*128+x)*4;for(let channel=0;channel<4;channel++)if(singlePixels[sourceIndex+channel]!==repeatPixels[targetIndex+channel])mismatchedChannels++;}
    return{results,tinyConcentric:{base:tinyBase.total,masked:tinyAfter.total},repeatHexagon:{mismatchedChannels}};
   },{types:patternTypes,source:'data:image/png;base64,'+maskBuffer.toString('base64')});
-  assert.equal(browserMaskCoverage.results.length,30,'all 15 patterns render at both 512 and 1024');
+  assert.equal(browserMaskCoverage.results.length,32,'all 16 patterns render at both 512 and 1024');
   const darkRetentionCases=browserMaskCoverage.results.map(result=>({pattern:result.type,size:result.size,base:result.base.dark,masked:result.masked.dark,ratio:result.base.dark?Number((result.masked.dark/result.base.dark).toFixed(4)):null})),measuredRetention=darkRetentionCases.filter(result=>result.ratio!==null),minimumRetention=measuredRetention.reduce((minimum,result)=>result.ratio<minimum.ratio?result:minimum,measuredRetention[0]);console.log(`MASK_DARK_RETENTION ${JSON.stringify(minimumRetention)}`);
   for(const result of browserMaskCoverage.results){const label=`${result.type} at ${result.size}px`;assert.ok(result.base.total>0||result.masked.total===0,`${label} preserves a naturally empty baseline`);if(result.base.dark>0)assert.ok(result.masked.dark>=result.base.dark*.95,`${label} retains baseline artwork in the opaque dark half (${result.masked.dark}/${result.base.dark} pixels)`);if(result.base.white>0)assert.equal(result.masked.white,0,`${label} removes baseline artwork in the opaque white half`);assert.equal(result.masked.transparentTop,0,`${label} keeps the transparent source band empty`);}
   assert.ok(browserMaskCoverage.tinyConcentric.base>0,'128px concentric reproduction has baseline arc artwork');assert.equal(browserMaskCoverage.tinyConcentric.masked,0,'128px concentric artwork confined to the white right half renders fully transparent after masking');
   assert.equal(browserMaskCoverage.repeatHexagon.mismatchedChannels,0,'all nine masked seamless hexagon preview tiles match the single-tile raster pixel-for-pixel');
   console.log('PASS persistent image mask source, global threshold/invert/alpha, transforms, stack order, repeat preview, undo, visibility and manual edits');
-  console.log('PASS browser SVG mask coverage for all 15 patterns at 512/1024, 128px concentric white-half reproduction, and nine seamless hexagon tiles');
+  console.log('PASS browser SVG mask coverage for all 16 patterns at 512/1024, 128px concentric white-half reproduction, and nine seamless hexagon tiles');
 
   await load('dots',{finite:true,rows:5,columns:5,size:60});
   const styledSvg='<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="g"><stop stop-color="#ffcc00"/><stop offset="1" stop-color="#ff5500"/></linearGradient><clipPath id="clip"><circle cx="32" cy="32" r="27"/></clipPath><clipPath id="full"><rect width="64" height="64"/></clipPath><mask id="mask" style="mask-type:luminance"><rect width="64" height="64" fill="white"/><circle cx="32" cy="32" r="9" fill="black"/></mask><mask id="full-mask"><rect width="64" height="64" fill="white"/></mask></defs><rect width="64" height="64" style="fill:url(\'#g\');stroke:#fff;stroke-width:2;clip-path:url(\'#clip\');mask:url(\'#mask\')" fill="#00ff00" clip-path="url(\'#full\')" mask="url(\'#full-mask\')"/></svg>';
@@ -270,8 +271,8 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
    await desktopPage.setViewportSize({width:1440,height:960});
    for(const theme of ['dark','light']){
     if(theme==='light')await desktopPage.locator('[data-action=theme]').click();
-    await fs.mkdir(path.join(root,'.tools','validation-1.3.1'),{recursive:true});
-    await desktopPage.screenshot({path:path.join(root,'.tools','validation-1.3.1',`aligned-header-${theme}.png`),fullPage:true});
+    await fs.mkdir(path.join(root,'.tools','validation-1.4.0'),{recursive:true});
+    await desktopPage.screenshot({path:path.join(root,'.tools','validation-1.4.0',`aligned-header-${theme}.png`),fullPage:true});
    }
    await desktopContext.close();
    console.log('PASS desktop project/header column alignment and toolbar spacing at eight widths');

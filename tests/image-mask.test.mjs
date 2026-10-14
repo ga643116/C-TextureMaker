@@ -32,8 +32,8 @@ test('image mask factory exposes the fixed schema and contain/cover geometry',()
   const mask=maskLayer(image,{imageWidth:4,imageHeight:2});
   assert.equal(isImageMaskLayer(mask),true);
   assert.equal(isImageMaskLayer(createLayer('dots')),false);
-  assert.deepEqual(Object.keys(mask),['id','type','name','visible','image','imageWidth','imageHeight','threshold','invert','fit','scale','rotation','offsetX','offsetY','flipX','flipY']);
-  assert.deepEqual({name:mask.name,visible:mask.visible,threshold:mask.threshold,invert:mask.invert,fit:mask.fit,scale:mask.scale,rotation:mask.rotation,offsetX:mask.offsetX,offsetY:mask.offsetY,flipX:mask.flipX,flipY:mask.flipY},{name:'Image mask',visible:true,threshold:128,invert:false,fit:'contain',scale:1,rotation:0,offsetX:0,offsetY:0,flipX:false,flipY:false});
+  assert.deepEqual(Object.keys(mask),['mode','colorMap','id','type','name','visible','image','imageWidth','imageHeight','threshold','invert','fit','scale','rotation','offsetX','offsetY','flipX','flipY']);
+  assert.deepEqual({name:mask.name,visible:mask.visible,threshold:mask.threshold,invert:mask.invert,fit:mask.fit,scale:mask.scale,rotation:mask.rotation,offsetX:mask.offsetX,offsetY:mask.offsetY,flipX:mask.flipX,flipY:mask.flipY},{name:'Image layer',visible:true,threshold:128,invert:false,fit:'contain',scale:1,rotation:0,offsetX:0,offsetY:0,flipX:false,flipY:false});
   assert.deepEqual(imageMaskGeometry(mask,{width:128,height:128}),{width:128,height:64,cx:64,cy:64,transform:'translate(64 64) rotate(0) scale(1 1)'});
   mask.fit='cover';
   assert.deepEqual(imageMaskGeometry(mask,{width:128,height:128}),{width:256,height:128,cx:64,cy:64,transform:'translate(64 64) rotate(0) scale(1 1)'});
@@ -87,9 +87,9 @@ test('Rec.709 luminance threshold keeps dark pixels and preserves source alpha, 
 
 // Resvg can panic on clipped, off-canvas geometry under a global image mask.
 // editor.browser.cjs checks all patterns and repeated tiles using Chromium pixels.
-test('one canvas-space image mask wraps all fifteen pattern types without drawing its source image',()=>{
+test('one canvas-space image mask wraps all sixteen pattern types without drawing its source image',()=>{
   const white=broadColumns([[255,255,255,255],[255,255,255,255],[255,255,255,255],[255,255,255,255]]),doc=createDocument();
-  doc.width=doc.height=128;doc.layers=PATTERNS.map((pattern,index)=>createLayer(pattern.id,`pattern-${index}`));
+  doc.width=doc.height=128;for(let start=0;start<PATTERNS.length;start+=15){doc.layers=PATTERNS.slice(start,start+15).map((pattern,index)=>createLayer(pattern.id,`pattern-${index}`));
   const baseline=renderSVG(doc),masked=renderSVG({...doc,layers:[...doc.layers,broadMaskLayer(white)]});
   const body=svg=>svg.slice(svg.indexOf('</defs>')+'</defs>'.length,svg.lastIndexOf('</svg>'));
   const baselineTile=/^<g clip-path="url\(#tile-base\)" transform="translate\(0 0\)">([\s\S]*)<\/g>$/.exec(body(baseline));
@@ -98,6 +98,7 @@ test('one canvas-space image mask wraps all fifteen pattern types without drawin
   assert.equal(masked.split(white).length-1,1,'each mask source is embedded once');
   const invisible=normalizeDocument({...doc,layers:[...doc.layers,broadMaskLayer(white)]});invisible.layers.at(-1).visible=false;
   assert.equal(renderSVG(invisible),baseline,'visibility excludes the mask effect');
+  }
 });
 
 test('multiple masks intersect, their order is independent, and the document background stays outside the mask',()=>{

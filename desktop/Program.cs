@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -74,6 +75,7 @@ namespace CTextureMaker
         private readonly WebView2 _webView;
         private readonly JavaScriptSerializer _serializer;
         private readonly List<MemoryStream> _blockedResponseBodies;
+        private readonly Dictionary<string, string> _projectDestinations = new Dictionary<string, string>();
         private CoreWebView2Environment _environment;
         private string _appDirectory;
         private System.Threading.Timer _smokeWatchdog;
@@ -526,6 +528,7 @@ namespace CTextureMaker
                 return;
 
             string requestId = null;
+            string messageType = null;
             try
             {
                 if (String.IsNullOrEmpty(e.WebMessageAsJson) || e.WebMessageAsJson.Length > _serializer.MaxJsonLength)
@@ -535,47 +538,131 @@ namespace CTextureMaker
                 if (message == null || !message.ContainsKey("type"))
                     return;
 
-                string messageType = ReadString(message, "type");
+                messageType = ReadString(message, "type");
                 if (String.Equals(messageType, "window", StringComparison.Ordinal))
                 {
                     HandleWindowMessage(message);
                     return;
                 }
-                if (!String.Equals(messageType, "save", StringComparison.Ordinal))
+                if (!String.Equals(messageType, "save", StringComparison.Ordinal) &&
+                    !String.Equals(messageType, "open", StringComparison.Ordinal) &&
+                    !String.Equals(messageType, "external", StringComparison.Ordinal))
                     return;
 
                 requestId = ReadString(message, "id");
                 ValidateRequestId(requestId);
-                string name = ReadString(message, "name");
-                string mime = ReadString(message, "mime");
-                string base64 = ReadString(message, "base64");
-                string language = ReadOptionalString(message, "lang");
-                ValidateMime(mime);
 
-                string extension;
-                string safeName = SanitizeFileName(name, out extension);
-                int maxEncodedLength = ((MaxSaveBytes + 2) / 3) * 4;
-                if (base64.Length > maxEncodedLength)
-                    throw new InvalidDataException("檔案超過 96 MiB 上限。");
+                if (String.Equals(messageType, "save", StringComparison.Ordinal))
+                    HandleSaveMessage(message, requestId);
+                else if (String.Equals(messageType, "open", StringComparison.Ordinal))
+                    HandleOpenRequest(message, requestId);
+                else
+                    HandleExternalRequest(message, requestId);
+            }
+            catch (Exception ex)
+            {
+                if (!IsValidRequestId(requestId))
+                    return;
 
-                byte[] bytes;
-                try
+                string error = LimitErrorMessage(ex.Message);
+                if (String.Equals(messageType, "open", StringComparison.Ordinal))
+                    PostOpenResult(requestId, false, false, error, null, null, null);
+                else if (String.Equals(messageType, "external", StringComparison.Ordinal))
+                    PostExternalResult(requestId, false, error);
+                else
+                    PostSaveResult(requestId, false, false, error);
+            }
+        }
+
+        private void HandleSaveMessage(IDictionary<string, object> message, string requestId)
+        {
+            string name = ReadString(message, "name");
+            string mime = ReadString(message, "mime");
+            string base64 = ReadString(message, "base64");
+            string language = ReadOptionalString(message, "lang");
+            string intent = ReadOptionalString(message, "intent");
+            string projectToken = ReadOptionalString(message, "projectToken");
+            bool saveAs = ReadOptionalBoolean(message, "saveAs");
+            ValidateMime(mime);
+
+            if (!String.IsNullOrEmpty(intent) && !String.Equals(intent, "project", StringComparison.Ordinal))
+                throw new InvalidDataException("儲存要求類型無效。");
+
+            string extension;
+            string safeName = SanitizeFileName(name, out extension);
+            int maxEncodedLength = ((MaxSaveBytes + 2) / 3) * 4;
+            if (base64.Length > maxEncodedLength)
+                throw new InvalidDataException("檔案超過 96 MiB 上限。");
+
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(base64);
+            }
+            catch (FormatException)
+            {
+                throw new InvalidDataException("檔案資料不是有效的 Base64。");
+            }
+            if (bytes.Length > MaxSaveBytes)
+                throw new InvalidDataException("檔案超過 96 MiB 上限。");
+
+            bool isProject = String.Equals(intent, "project", StringComparison.Ordinal);
+            if (isProject)
+            {
+                if (extension != ".ctm" || !String.Equals(mime, "application/json", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("專案只能以 application/json 格式儲存為 .ctm 檔案。");
+
+                HandleProjectSave(requestId, safeName, bytes, language, projectToken, saveAs);
+                return;
+            }
+
+            SaveFileDialog dialog = new SaveFileDialog();
+            dialog.Title = SaveDialogTitle(language);
+            dialog.FileName = safeName;
+            dialog.Filter = SaveDialogFilter(language, extension);
+            dialog.FilterIndex = 1;
+            dialog.DefaultExt = extension.TrimStart('.');
+            dialog.AddExtension = true;
+            dialog.OverwritePrompt = true;
+            dialog.CheckPathExists = true;
+
+            using (dialog)
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK)
                 {
-                    bytes = Convert.FromBase64String(base64);
+                    PostSaveResult(requestId, false, true, null);
+                    return;
                 }
-                catch (FormatException)
-                {
-                    throw new InvalidDataException("檔案資料不是有效的 Base64。");
-                }
-                if (bytes.Length > MaxSaveBytes)
-                    throw new InvalidDataException("檔案超過 96 MiB 上限。");
 
+                string selectedExtension = Path.GetExtension(dialog.FileName).ToLowerInvariant();
+                if (!String.Equals(selectedExtension, extension, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("所選副檔名必須與原始檔案格式相同。");
+
+                using (FileStream output = new FileStream(dialog.FileName, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    output.Write(bytes, 0, bytes.Length);
+                    output.Flush();
+                }
+            }
+
+            PostSaveResult(requestId, true, false, null);
+        }
+
+        private void HandleProjectSave(string requestId, string safeName, byte[] bytes, string language, string projectToken, bool saveAs)
+        {
+            string destinationPath = null;
+            bool reuseToken = !saveAs &&
+                !String.IsNullOrEmpty(projectToken) &&
+                _projectDestinations.TryGetValue(projectToken, out destinationPath);
+
+            if (!reuseToken)
+            {
                 SaveFileDialog dialog = new SaveFileDialog();
                 dialog.Title = SaveDialogTitle(language);
                 dialog.FileName = safeName;
-                dialog.Filter = SaveDialogFilter(language, extension);
+                dialog.Filter = SaveDialogFilter(language, ".ctm");
                 dialog.FilterIndex = 1;
-                dialog.DefaultExt = extension.TrimStart('.');
+                dialog.DefaultExt = "ctm";
                 dialog.AddExtension = true;
                 dialog.OverwritePrompt = true;
                 dialog.CheckPathExists = true;
@@ -589,23 +676,86 @@ namespace CTextureMaker
                     }
 
                     string selectedExtension = Path.GetExtension(dialog.FileName).ToLowerInvariant();
-                    if (!String.Equals(selectedExtension, extension, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidDataException("所選副檔名必須與原始檔案格式相同。");
-
-                    using (FileStream output = new FileStream(dialog.FileName, FileMode.Create, FileAccess.Write, FileShare.None))
-                    {
-                        output.Write(bytes, 0, bytes.Length);
-                        output.Flush();
-                    }
+                    if (!String.Equals(selectedExtension, ".ctm", StringComparison.Ordinal))
+                        throw new InvalidDataException("專案必須儲存為 .ctm 檔案。");
+                    destinationPath = dialog.FileName;
                 }
+            }
 
-                PostSaveResult(requestId, true, false, null);
-            }
-            catch (Exception ex)
+            AtomicProjectWriter.Write(destinationPath, bytes);
+
+            string resultingToken = projectToken;
+            if (!reuseToken)
             {
-                if (IsValidRequestId(requestId))
-                    PostSaveResult(requestId, false, false, LimitErrorMessage(ex.Message));
+                do
+                {
+                    resultingToken = Guid.NewGuid().ToString("N");
+                }
+                while (_projectDestinations.ContainsKey(resultingToken));
+                _projectDestinations.Add(resultingToken, Path.GetFullPath(destinationPath));
             }
+
+            PostSaveResult(requestId, true, false, null, resultingToken);
+        }
+
+        private void HandleOpenRequest(IDictionary<string, object> message, string requestId)
+        {
+            string language = ReadOptionalString(message, "lang");
+            OpenFileDialog dialog = new OpenFileDialog();
+            dialog.Title = OpenDialogTitle(language);
+            dialog.Filter = OpenDialogFilter(language);
+            dialog.FilterIndex = 1;
+            dialog.DefaultExt = "ctm";
+            dialog.CheckFileExists = true;
+            dialog.CheckPathExists = true;
+            dialog.Multiselect = false;
+
+            string selectedPath;
+            using (dialog)
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    PostOpenResult(requestId, false, true, null, null, null, null);
+                    return;
+                }
+                selectedPath = dialog.FileName;
+            }
+
+            if (!String.Equals(Path.GetExtension(selectedPath), ".ctm", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("只能開啟 .ctm 專案檔。");
+
+            FileInfo info = new FileInfo(selectedPath);
+            if (info.Length > MaxSaveBytes)
+                throw new InvalidDataException("檔案超過 96 MiB 上限。");
+
+            byte[] bytes = File.ReadAllBytes(selectedPath);
+            if (bytes.Length > MaxSaveBytes)
+                throw new InvalidDataException("檔案超過 96 MiB 上限。");
+
+            string token;
+            do
+            {
+                token = Guid.NewGuid().ToString("N");
+            }
+            while (_projectDestinations.ContainsKey(token));
+            _projectDestinations.Add(token, Path.GetFullPath(selectedPath));
+
+            PostOpenResult(requestId, true, false, null, Path.GetFileName(selectedPath), token, Convert.ToBase64String(bytes));
+        }
+
+        private void HandleExternalRequest(IDictionary<string, object> message, string requestId)
+        {
+            string target = ReadString(message, "target");
+            string url;
+            if (String.Equals(target, "repository", StringComparison.Ordinal))
+                url = "https://github.com/ga643116/C-TextureMaker";
+            else if (String.Equals(target, "author", StringComparison.Ordinal))
+                url = "https://github.com/ga643116";
+            else
+                throw new InvalidDataException("外部連結目標無效。");
+
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            PostExternalResult(requestId, true, null);
         }
 
         private void HandleWindowMessage(IDictionary<string, object> message)
@@ -729,7 +879,7 @@ namespace CTextureMaker
         [DllImport("user32.dll", ExactSpelling = true)]
         private static extern int GetSystemMetrics(int metric);
 
-        private void PostSaveResult(string requestId, bool ok, bool cancelled, string error)
+        private void PostSaveResult(string requestId, bool ok, bool cancelled, string error, string projectToken = null)
         {
             if (IsDisposed || _webView.CoreWebView2 == null)
                 return;
@@ -740,6 +890,46 @@ namespace CTextureMaker
             result["ok"] = ok;
             if (cancelled)
                 result["cancelled"] = true;
+            if (!String.IsNullOrEmpty(error))
+                result["error"] = error;
+            if (!String.IsNullOrEmpty(projectToken))
+                result["projectToken"] = projectToken;
+
+            _webView.CoreWebView2.PostWebMessageAsJson(_serializer.Serialize(result));
+        }
+
+        private void PostOpenResult(string requestId, bool ok, bool cancelled, string error, string name, string projectToken, string base64)
+        {
+            if (IsDisposed || _webView.CoreWebView2 == null)
+                return;
+
+            Dictionary<string, object> result = new Dictionary<string, object>();
+            result["type"] = "open-result";
+            result["id"] = requestId;
+            result["ok"] = ok;
+            if (cancelled)
+                result["cancelled"] = true;
+            if (!String.IsNullOrEmpty(error))
+                result["error"] = error;
+            if (!String.IsNullOrEmpty(name))
+                result["name"] = name;
+            if (!String.IsNullOrEmpty(projectToken))
+                result["projectToken"] = projectToken;
+            if (base64 != null)
+                result["base64"] = base64;
+
+            _webView.CoreWebView2.PostWebMessageAsJson(_serializer.Serialize(result));
+        }
+
+        private void PostExternalResult(string requestId, bool ok, string error)
+        {
+            if (IsDisposed || _webView.CoreWebView2 == null)
+                return;
+
+            Dictionary<string, object> result = new Dictionary<string, object>();
+            result["type"] = "external-result";
+            result["id"] = requestId;
+            result["ok"] = ok;
             if (!String.IsNullOrEmpty(error))
                 result["error"] = error;
 
@@ -758,6 +948,37 @@ namespace CTextureMaker
         {
             object value;
             return message.TryGetValue(key, out value) && value is string ? (string)value : String.Empty;
+        }
+
+        private static bool ReadOptionalBoolean(IDictionary<string, object> message, string key)
+        {
+            object value;
+            if (!message.TryGetValue(key, out value))
+                return false;
+            if (!(value is bool))
+                throw new InvalidDataException("訊息中的 " + key + " 欄位無效。");
+            return (bool)value;
+        }
+
+        private static string OpenDialogTitle(string language)
+        {
+            if (!String.IsNullOrEmpty(language) && language.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+                return "開啟 C-TextureMaker 專案";
+            if (!String.IsNullOrEmpty(language) && language.StartsWith("ja", StringComparison.OrdinalIgnoreCase))
+                return "C-TextureMaker プロジェクトを開く";
+            return "Open C-TextureMaker Project";
+        }
+
+        private static string OpenDialogFilter(string language)
+        {
+            string description;
+            if (!String.IsNullOrEmpty(language) && language.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+                description = "CTM 專案檔";
+            else if (!String.IsNullOrEmpty(language) && language.StartsWith("ja", StringComparison.OrdinalIgnoreCase))
+                description = "CTM プロジェクトファイル";
+            else
+                description = "CTM project files";
+            return description + " (*.ctm)|*.ctm";
         }
 
         private static string SaveDialogTitle(string language)
@@ -1013,6 +1234,47 @@ namespace CTextureMaker
                 body.Dispose();
             _blockedResponseBodies.Clear();
             _webView.Dispose();
+        }
+    }
+
+    internal static class AtomicProjectWriter
+    {
+        internal static void Write(string targetPath, byte[] bytes)
+        {
+            if (String.IsNullOrEmpty(targetPath))
+                throw new InvalidDataException("專案儲存路徑無效。");
+            if (bytes == null)
+                throw new ArgumentNullException("bytes");
+
+            string fullPath = Path.GetFullPath(targetPath);
+            string directory = Path.GetDirectoryName(fullPath);
+            string temporaryPath = Path.Combine(directory, "." + Path.GetFileName(fullPath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+            try
+            {
+                using (FileStream output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    output.Write(bytes, 0, bytes.Length);
+                    output.Flush(true);
+                }
+
+                if (File.Exists(fullPath))
+                    File.Replace(temporaryPath, fullPath, null);
+                else
+                    File.Move(temporaryPath, fullPath);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    try
+                    {
+                        File.Delete(temporaryPath);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
         }
     }
 }
