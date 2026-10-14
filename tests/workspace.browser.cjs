@@ -84,8 +84,8 @@ const root=path.resolve(__dirname,'..');
   await page.locator('[data-action=save-preset]').click();await page.locator('#name-input').fill('Image preset');await page.locator('#name-form').evaluate(f=>f.requestSubmit());await page.waitForTimeout(100);await file(c);await page.locator('[data-action=presets]').click();await page.locator('[data-action=preset]').filter({hasText:'Image preset'}).click();stored=await save();assert.equal(stored.name,c.name);assert.equal(stored.layers.length,2);assert.equal(stored.layers[0].type,'waves');
   await page.waitForTimeout(400);await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.appReady==='true');assert.equal(await dirty(),'true','recovered work needs a manual file save');await page.locator('[data-action=presets]').click();assert.ok(await page.locator('[data-action=preset]').filter({hasText:'My dots'}).isVisible());await page.locator('dialog [data-action=close-dialog]').click();
   await page.locator('[data-action=select-layer]').first().click();
-  await fs.mkdir(path.join(root,'.tools','validation-1.5.0'),{recursive:true});await page.screenshot({path:path.join(root,'.tools','validation-1.5.0','image-dimensions.png')});
-  await page.locator('#dimensions-label').click();await page.waitForTimeout(250);await page.screenshot({path:path.join(root,'.tools','validation-1.5.0','canvas-size.png')});
+  await fs.mkdir(path.join(root,'.tools','validation-1.4.1'),{recursive:true});await page.screenshot({path:path.join(root,'.tools','validation-1.4.1','image-dimensions.png')});
+  await page.locator('#dimensions-label').click();await page.waitForTimeout(250);await page.screenshot({path:path.join(root,'.tools','validation-1.4.1','canvas-size.png')});
   console.log('PASS external file drop, original resolution, invalid input, multiple images and persistent user library');
   assert.deepEqual(errors,[]);await context.close();
  }finally{await browser?.close();await new Promise(r=>server.close(r));}

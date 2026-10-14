@@ -4,11 +4,11 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.4.0 public preview** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.0/C-TextureMaker-1.4.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.4.0) · [Source](https://github.com/ga643116/C-TextureMaker)
+**v1.4.1 public preview** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.1/C-TextureMaker-1.4.1-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.4.1) · [Source](https://github.com/ga643116/C-TextureMaker)
 
-[See what's new in 1.4.0](docs/releases/v1.4.0.md#english)
+[See what's new in 1.4.1](docs/releases/v1.4.1.md#english)
 
-**New in this release**: Low Poly, image coloring, contour depth and improved Save / Save As.
+**This update**: usability improvements and fixes for independent presets, unsaved changes warnings, image drag-and-drop and canvas aspect ratio locking.
 
 ![Workspace in Traditional Chinese with the dark theme](docs/media/workspace-zh-dark.png)
 
@@ -42,7 +42,7 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 
 ## Download and launch
 
-1. Download [C-TextureMaker-1.4.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.0/C-TextureMaker-1.4.0-win-x64.zip) and extract the entire archive.
+1. Download [C-TextureMaker-1.4.1-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.1/C-TextureMaker-1.4.1-win-x64.zip) and extract the entire archive.
 2. Open C-TextureMaker.exe. Keep the app folder and DLL files beside it.
 3. Place the whole folder somewhere writable so the app can save work and preferences in the adjacent data folder.
 
@@ -64,7 +64,7 @@ Low Poly offers vertex density, shape variation, primary / secondary colors, gra
 
 Save project asks for a location once, then updates that file. Use the adjacent arrow or Ctrl+Shift+S for Save As. Opening a .ctm also sets its save destination. Each layer remembers every pattern's settings and cell edits, including across project saves; Reset affects only the current pattern.
 
-1.4.0 opens older projects. Projects with the new pattern, image colors or depth settings require 1.4.0 or later.
+1.4.1 opens older projects. Projects with the new pattern, image colors or depth settings require 1.4.0 or later. Canvas aspect ratio settings require 1.4.1 or later.
 
 ## Build from source
 

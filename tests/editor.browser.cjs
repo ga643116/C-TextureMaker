@@ -144,7 +144,7 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
   imageDoc=await savedDocument();assert.equal(imageDoc.layers.filter(layer=>layer.type==='imageMask').length,1,'selecting a pattern while a mask is selected preserves the mask');assert.equal(imageDoc.layers.filter(layer=>layer.type!=='imageMask').length,1,'pattern selection replaces the last pattern');assert.equal(imageDoc.layers.find(layer=>layer.type!=='imageMask').type,'polygons');
   await page.locator('[data-action=add-layer]').click();await page.locator('[data-pattern=dots]').click();
   imageDoc=await savedDocument();assert.equal(imageDoc.layers.filter(layer=>layer.type==='imageMask').length,1);assert.equal(imageDoc.layers.filter(layer=>layer.type!=='imageMask').length,2,'image mask remains a separate layer across pattern edits');
-  await selectLayer(maskId).click();assert.equal(await page.locator('#mask-overlay').isVisible(),true,'selected mask exposes transform handles in single view');await fs.mkdir(path.join(root,'.tools','validation-1.5.0'),{recursive:true});await page.screenshot({path:path.join(root,'.tools','validation-1.5.0','persistent-image-mask.png'),fullPage:true});
+  await selectLayer(maskId).click();assert.equal(await page.locator('#mask-overlay').isVisible(),true,'selected mask exposes transform handles in single view');await fs.mkdir(path.join(root,'.tools','validation-1.4.1'),{recursive:true});await page.screenshot({path:path.join(root,'.tools','validation-1.4.1','persistent-image-mask.png'),fullPage:true});
   let masked=await readMaskRaster();
   assert.ok(alphaPixels(masked,16,40,240,240)>0,'dark source region retains artwork');assert.equal(alphaPixels(masked,272,40,496,240),0,'white source region removes artwork from every pattern layer');assert.equal(alphaPixels(masked,0,0,512,24),0,'transparent source pixels remain empty');
   const baseAlpha=alphaTotal(masked);await page.locator('[data-action=layer-down]').click();let reordered=await readMaskRaster();assert.equal(alphaTotal(reordered),baseAlpha,'mask intersection is independent of layer stacking');
@@ -273,8 +273,8 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
    await desktopPage.setViewportSize({width:1440,height:960});
    for(const theme of ['dark','light']){
     if(theme==='light')await desktopPage.locator('[data-action=theme]').click();
-    await fs.mkdir(path.join(root,'.tools','validation-1.5.0'),{recursive:true});
-    await desktopPage.screenshot({path:path.join(root,'.tools','validation-1.5.0',`aligned-header-${theme}.png`),fullPage:true});
+    await fs.mkdir(path.join(root,'.tools','validation-1.4.1'),{recursive:true});
+    await desktopPage.screenshot({path:path.join(root,'.tools','validation-1.4.1',`aligned-header-${theme}.png`),fullPage:true});
    }
    await desktopContext.close();
    console.log('PASS desktop project/header column alignment and toolbar spacing at eight widths');

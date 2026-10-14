@@ -4,11 +4,11 @@
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.4.0 公開プレビュー** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.0/C-TextureMaker-1.4.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.4.0) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
+**v1.4.1 公開プレビュー** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.1/C-TextureMaker-1.4.1-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.4.1) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
 
-[1.4.0 の主な変更点](docs/releases/v1.4.0.md#日本語)
+[1.4.1 の主な変更点](docs/releases/v1.4.1.md#日本語)
 
-**今回の更新**：ローポリ、画像による着色、等高線の立体表現、保存／別名保存を追加しました。
+**今回の更新**：使いやすさの改善と不具合修正。プリセットの独立、未保存の変更確認、画像のドラッグ＆ドロップ、キャンバスの縦横比固定に対応しました。
 
 ![繁体字中国語・ダークテーマのワークスペース](docs/media/workspace-zh-dark.png)
 
@@ -42,7 +42,7 @@
 
 ## ダウンロードと起動
 
-1. [C-TextureMaker-1.4.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.0/C-TextureMaker-1.4.0-win-x64.zip) をダウンロードし、全体を展開します。
+1. [C-TextureMaker-1.4.1-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.1/C-TextureMaker-1.4.1-win-x64.zip) をダウンロードし、全体を展開します。
 2. C-TextureMaker.exe を起動します。app フォルダーと DLL は隣に残してください。
 3. 書き込み可能な場所にフォルダー全体を置くと、隣接する data フォルダーに作業と設定を保存できます。
 
@@ -64,7 +64,7 @@
 
 最初の保存時に場所を選び、次回から同じファイルを更新します。右側の矢印またはCtrl+Shift+Sで別名保存できます。.ctmを開いた場合もそのファイルへ保存します。各レイヤーのパターン設定とセル編集は切り替え後も記憶され、プロジェクトにも保存されます。リセットは現在のパターンだけに適用されます。
 
-1.4.0は旧版プロジェクトを開けます。新パターン・画像の色・立体設定を含むプロジェクトは1.4.0以降で使用してください。
+1.4.1は旧版プロジェクトを開けます。新パターン・画像の色・立体設定を含むプロジェクトは1.4.0以降で使用してください。 キャンバスの縦横比設定には1.4.1以降が必要です。
 
 ## ソースからビルド
 
