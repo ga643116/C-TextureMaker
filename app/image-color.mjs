@@ -11,7 +11,7 @@ export function normalizeColorMap(value) {
   if (value === null || value === undefined) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).sort().join(',') !== 'height,rgba,width') throw new TypeError('Invalid image color map');
   const {width,height,rgba}=value;
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width<1 || height<1 || width>256 || height>256 || typeof rgba!=='string' || rgba.length!==Math.ceil(width*height*4/3)*4) throw new TypeError('Invalid image color map size');
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width<1 || height<1 || width>1024 || height>1024 || typeof rgba!=='string' || rgba.length!==Math.ceil(width*height*4/3)*4) throw new TypeError('Invalid image color map size');
   if (!decoded.has(rgba)) {
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(rgba)) throw new TypeError('Invalid image color map data');
     let binary;

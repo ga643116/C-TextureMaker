@@ -7,9 +7,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PATTERNS, createDocument, createLayer, normalizeDocument, renderSVG } from '../app/engine.mjs';
 
-const ids = ['concentric','halftone','hud','ticks','barcode','waves','lines','dots','polygons','contour','lowpoly','symbols','nested','globe','grid','rays'];
+const ids = ['concentric','halftone','hud','ticks','barcode','waves','lines','dots','polygons','contour','lowpoly','pixel','symbols','nested','globe','grid','rays'];
 
-test('exposes the sixteen localized pattern schemas and renders each default layer', () => {
+test('exposes the seventeen localized pattern schemas and renders each default layer', () => {
   assert.deepEqual(PATTERNS.map(p => p.id), ids);
   for (const pattern of PATTERNS) {
     for (const locale of ['zh','en','ja']) {
@@ -32,7 +32,7 @@ test('exposes the sixteen localized pattern schemas and renders each default lay
 test('creates a fresh contract-shaped document and applies layer transforms and transparency', () => {
   const doc = createDocument();
   assert.deepEqual(Object.keys(doc), ['version','name','width','height','transparent','background','seamless','seed','layers']);
-  assert.deepEqual(Object.keys(doc.layers[0]), ['id','type','visible','opacity','color','secondary','rotation','scale','offsetX','offsetY','params','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask','patternSettings']);
+  assert.deepEqual(Object.keys(doc.layers[0]), ['id','type','visible','opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask','patternSettings']);
   assert.equal(doc.layers[0].type, 'contour');
   const transparent = renderSVG(doc);
   assert.doesNotMatch(transparent, /<rect width="1024" height="1024" fill="#eeeae2"/);

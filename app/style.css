@@ -119,3 +119,16 @@ select option{background:var(--panel);color:var(--ink)}
 .canvas-lock{margin-top:20px}.image-source-size{display:flex;gap:5px;flex-wrap:wrap;margin-top:-4px;margin-bottom:16px}
 .unsaved-name{font-weight:650;overflow-wrap:anywhere}.unsaved-modal{width:490px}
 body.file-dropping:after{content:attr(data-drop-hint);position:fixed;inset:12px;z-index:40;display:grid;place-items:center;background:color-mix(in srgb,var(--panel) 90%,transparent);border:3px dashed var(--ink);color:var(--ink);font-size:22px;font-weight:700;pointer-events:none;border-radius:8px}
+
+/* Compact editable Pixel palette and its paired grid/output readouts. */
+.pixel-palette{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;margin:16px 0;max-height:242px;overflow:auto;padding:3px}
+.pixel-swatch{display:block;aspect-ratio:1;min-width:0}
+.pixel-swatch input[type=color]{display:block;width:100%;height:100%;padding:0;border:1px solid var(--line);border-radius:3px;cursor:pointer;background:transparent}
+.pixel-swatch input::-webkit-color-swatch-wrapper{padding:2px}
+.pixel-swatch input::-webkit-color-swatch{border:0;border-radius:1px}
+.pixel-count-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:0 0 20px}
+.pixel-count-presets .button{min-width:0;justify-content:center;padding:6px;font-size:12px}
+.pixel-output-switch{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pixel-output-switch .button{min-width:0;white-space:normal;justify-content:center;padding:9px 6px;font-size:12px}
+.pixel-readout{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 0;font-size:13px}
+.pixel-readout strong{white-space:nowrap}

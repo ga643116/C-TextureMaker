@@ -1,4 +1,4 @@
-C-TextureMaker 1.4.1 — Quick Start
+C-TextureMaker 1.5.0 — Quick Start
 公開預覽 | Public preview | 公開プレビュー
 
 已公開版本 / Published downloads / 公開済みバージョン:
@@ -62,3 +62,15 @@ PNG は透明または単色背景に対応し、長辺 8192 px、総画素数 3
 Ctrl+Sは最初に.ctmの保存場所を選び、次回から同じファイルを更新します。隣の矢印かCtrl+Shift+Sで別名保存。Ctrl+O で開き、Ctrl+E で書き出します。Ctrl+Z で元に戻し、Ctrl+Shift+Z または Ctrl+Y でやり直します。
 作業と設定はアプリの隣の data フォルダーに保存されます。終了前にステータスバーの「自動保存済み」を確認し、デザインの移動やバックアップには .ctm プロジェクトを別途保存してください。
 本プロジェクト独自のコードは MPL-2.0 です。Transitions.dev と Microsoft WebView2 には各自の条件が適用されます。LICENSE、LICENSE-SCOPE.md、THIRD-PARTY-NOTICES.txt、ポータブル版の LICENSE-WebView2.txt を参照してください。
+
+Pixel（1.5.0 測試版）
+左側選 Pixel，匯入圖片作為色彩圖層，再選回 Pixel 調整。像素量拉桿控制長邊 4–512 格，短邊依畫布比例計算。色數上限為 2–256；可自動取色、選灰階或復古綠色板，點擊色塊改為自訂色。圖片可在自己的圖層調整尺寸、旋轉及翻轉。
+「目前畫布尺寸」保留大圖尺寸；「實際像素格尺寸」將每格輸出為 1 px，例如 64 × 32。此設定同時作用於 SVG 與 PNG，且不縮小專案畫布。PNG 先以格數合成可見圖層，再用最近鄰方式放大；色數限制只適用 Pixel 圖層，背景與其他圖層可能增加成品色數。Pixel 使用二值透明度讓輪廓清晰。
+
+Pixel (1.5.0 test build)
+Select Pixel, import an image as a color layer, then select Pixel again. The pixel-count slider sets 4–512 cells on the long edge; the short edge follows the canvas ratio. Limit colors to 2–256, choose automatic, grayscale or retro green, and edit swatches to create a custom palette. Transform the source on its own image layer.
+Canvas size keeps the large output; Actual pixel grid exports each cell as 1 px (for example 64 × 32), for both SVG and PNG, without resizing the project canvas. PNG composites visible layers at grid resolution before nearest-neighbor enlargement. The color limit applies to the Pixel layer; backgrounds and other layers may add colors. Pixel transparency is binary for crisp edges.
+
+Pixel（1.5.0 テスト版）
+Pixel を選び、色レイヤーとして画像を読み込んでから Pixel を再選択します。スライダーで長辺を 4–512 セルに調整し、短辺はキャンバスの比率に合わせます。色数は 2–256 色。画像から抽出・グレースケール・レトログリーンを選べ、色をクリックするとカスタムパレットになります。元画像の変形は画像レイヤーで調整します。
+キャンバスサイズは大きな出力を維持し、実ピクセルサイズは各セルを 1 px（例：64 × 32）で SVG・PNG に出力します。プロジェクトのキャンバスは変更しません。PNG はグリッド解像度で表示レイヤーを合成してから最近傍法で拡大します。色数の上限は Pixel レイヤーのみで、背景や他のレイヤーにより出力色数が増える場合があります。透明度は二値で輪郭を鮮明に保ちます。

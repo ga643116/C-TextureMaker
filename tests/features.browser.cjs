@@ -29,8 +29,8 @@ const root=path.resolve(__dirname,'..');
   const field=key=>page.locator(`#inspector input[type=number][data-key="${key}"]`);
   const change=async(key,value)=>{await field(key).fill(String(value));await field(key).press('Tab');await page.waitForTimeout(60);};
   const doc=engine.createDocument();doc.width=doc.height=512;doc.layers=[engine.createLayer('lowpoly','art')];doc.layers[0].color='#e2e5eb';doc.layers[0].secondary='#152052';await load(doc);
-  assert.equal(await page.locator('.pattern-card').count(),16);
-  const before=await page.locator('#artboard polygon').count();await change('points',360);assert.ok(await page.locator('#artboard polygon').count()>before*1.5);
+  assert.equal(await page.locator('.pattern-card').count(),17);
+  const before=await page.locator('#artboard polygon').count();await change('points',360);await page.waitForFunction(before=>document.querySelectorAll('#artboard polygon').length>before*1.5,before);assert.ok(await page.locator('#artboard polygon').count()>before*1.5);
   const png=new PNG({width:96,height:64});
   for(let y=0;y<64;y++)for(let x=0;x<96;x++)png.data.set([x<48?240:20,y>40?230:30,x>=48?240:20,x>78&&y>45?0:255],(y*96+x)*4);
   await page.locator('[data-action=add-color-image]').click();await page.locator('#file-image-mask').setInputFiles({name:'colors.png',mimeType:'image/png',buffer:PNG.sync.write(png)});
@@ -64,7 +64,7 @@ const root=path.resolve(__dirname,'..');
    return {results,different,repeatError,edge,interior,alpha,depthColors};
   });
   for(const row of rasterChecks.results)assert.ok(row.red>0&&row.blue>0,`${row.type} receives both image colors`);
-  assert.ok(rasterChecks.different>200,'inner and outer shadows must visibly differ');assert.ok(rasterChecks.repeatError<128*128*4*2,'central repeat tile matches single export');assert.equal(rasterChecks.alpha,0);assert.deepEqual(rasterChecks.depthColors,[[255,0,0,255],[0,0,255,255],[0,0,255,255],[255,0,0,255]],'depth paint stays fixed to the image under periodic geometry transforms');assert.ok(rasterChecks.edge<rasterChecks.interior*3+128,'periodic shadows do not introduce an edge stripe');console.log('PASS actual SVG pixels for 16 image-colored patterns, transparent facets and inner/outer repeated contour shadows',JSON.stringify(rasterChecks));
+  assert.ok(rasterChecks.different>200,'inner and outer shadows must visibly differ');assert.ok(rasterChecks.repeatError<128*128*4*2,'central repeat tile matches single export');assert.equal(rasterChecks.alpha,0);assert.deepEqual(rasterChecks.depthColors,[[255,0,0,255],[0,0,255,255],[0,0,255,255],[255,0,0,255]],'depth paint stays fixed to the image under periodic geometry transforms');assert.ok(rasterChecks.edge<rasterChecks.interior*3+128,'periodic shadows do not introduce an edge stripe');console.log('PASS actual SVG pixels for 17 image-colored patterns, transparent facets and inner/outer repeated contour shadows',JSON.stringify(rasterChecks));
 
   // Verify real frontend Save/Open wiring against a deterministic native bridge.
   const native=await browser.newContext({viewport:{width:1440,height:960}});

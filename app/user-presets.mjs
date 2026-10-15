@@ -12,7 +12,7 @@ const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,48}$/.tes
 const PRESET_KEYS = new Set(['id', 'name', 'version', 'layer', 'seed', 'width', 'height']);
 const CURRENT_PATTERN_KEYS = [
   'opacity', 'color', 'secondary', 'rotation', 'scale', 'offsetX', 'offsetY',
-  'params', 'hiddenCells', 'customMotif', 'motifTint', 'cellLinks', 'linkWidth', 'mask',
+  'params', 'pixelPalette', 'hiddenCells', 'customMotif', 'motifTint', 'cellLinks', 'linkWidth', 'mask',
 ];
 
 function presetName(value) {

@@ -14,7 +14,7 @@ const imageLayer=()=>createImageMaskLayer({id:'colors',image,imageWidth:2,imageH
 
 test('embedded image colors validate dimensions and bytes, and old mask layers remain masks',()=>{
  assert.deepEqual(normalizeColorMap(colorMap),colorMap);
- for(const bad of [{...colorMap,extra:1},{...colorMap,width:257},{...colorMap,width:0},{...colorMap,height:1.5},{...colorMap,rgba:'!'.repeat(colorMap.rgba.length)},{...colorMap,rgba:'AAAA'}])assert.throws(()=>normalizeColorMap(bad),/color map/);
+ for(const bad of [{...colorMap,extra:1},{...colorMap,width:1025},{...colorMap,width:0},{...colorMap,height:1.5},{...colorMap,rgba:'!'.repeat(colorMap.rgba.length)},{...colorMap,rgba:'AAAA'}])assert.throws(()=>normalizeColorMap(bad),/color map/);
  const doc=createDocument(),legacy=imageLayer();delete legacy.mode;delete legacy.colorMap;doc.layers.push(legacy);
  const loaded=normalizeDocument(JSON.parse(JSON.stringify(doc)));assert.equal(loaded.layers[1].mode,'mask');assert.equal(loaded.layers[1].colorMap,null);
  const layer=imageLayer();doc.layers[1]=layer;

@@ -17,7 +17,7 @@ import {
 } from '../app/engine.mjs';
 
 const patternIds = PATTERNS.map(pattern => pattern.id);
-const settingKeys = ['opacity','color','secondary','rotation','scale','offsetX','offsetY','params','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask'];
+const settingKeys = ['opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask'];
 const png = (() => {
   const bytes = Buffer.alloc(33);
   Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]).copy(bytes);
@@ -83,8 +83,8 @@ function documentWithCachedPattern(activeType = 'dots', cachedType = 'grid') {
   return document;
 }
 
-test('all sixteen patterns restore their independent full settings after switching away and back', () => {
-  assert.equal(patternIds.length, 16);
+test('all seventeen patterns restore their independent full settings after switching away and back', () => {
+  assert.equal(patternIds.length, 17);
   let layer = createLayer(patternIds[0], 'round-trip');
   layer.visible = false;
   const expected = new Map();
