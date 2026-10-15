@@ -10,7 +10,7 @@
 
 **今回の更新**：使いやすさの改善と不具合修正。プリセットの独立、未保存の変更確認、画像のドラッグ＆ドロップ、キャンバスの縦横比固定に対応しました。
 
-![繁体字中国語・ダークテーマのワークスペース](docs/media/workspace-zh-dark.png)
+https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 <details>
 <summary>その他のワークスペース画面</summary>

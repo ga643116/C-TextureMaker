@@ -10,7 +10,7 @@
 
 **本次更新**：易用性改善與修正，包括預設與專案分離、未儲存提醒、拖入圖片及畫布比例鎖定。
 
-![繁體中文深色主題工作區](docs/media/workspace-zh-dark.png)
+https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 <details>
 <summary>更多工作區畫面</summary>

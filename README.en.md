@@ -10,7 +10,7 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 
 **This update**: usability improvements and fixes for independent presets, unsaved changes warnings, image drag-and-drop and canvas aspect ratio locking.
 
-![Workspace in Traditional Chinese with the dark theme](docs/media/workspace-zh-dark.png)
+https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 <details>
 <summary>More workspace views</summary>
