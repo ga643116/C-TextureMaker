@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ![Seamless export animation](docs/media/seamless-export.gif)
 
-> **In development: 1.5.0** (not released) adds Pixel art with 2–256 colors, editable palettes, average/nearest sampling, dithering and native pixel-size export. Patterns can use independent image sources or share an image and stack in layer order. The download above remains the published 1.4.1.
+> **In development: 1.5.0** (not released) adds Pixel art with 2–256 colors, editable palettes, average/nearest sampling, dithering and native pixel-size export. Pattern sources can use all image layers, the image/group below, or no image. Multi-select, Ctrl+G grouping and drag-and-drop ordering let several effects share a base. The download above remains the published 1.4.1.
 
 ## Features
 

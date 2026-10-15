@@ -79,8 +79,9 @@ function pixelDocument(engine,encodeColorMap){
    assert.ok(pixel,'project fixture has a Pixel layer');
    await page.waitForFunction(({name,id,source,params})=>{
     const selected=document.querySelector('#layer-list .layer.selected [data-action="select-layer"]');
-    const selector=document.querySelector('#inspector select[data-key="imageSource"]');
-    if(document.querySelector('.document-name span')?.textContent!==name||selected?.dataset.id!==id||selector?.value!==source||document.querySelector('[data-pattern="pixel"]')?.getAttribute('aria-pressed')!=='true')return false;
+    const sourceButton=document.querySelector('#inspector [data-action="image-source"][aria-pressed="true"]');
+    const sourceMode=['all','none'].includes(source)?source:'below';
+    if(document.querySelector('.document-name span')?.textContent!==name||selected?.dataset.id!==id||sourceButton?.dataset.mode!==sourceMode||document.querySelector('[data-pattern="pixel"]')?.getAttribute('aria-pressed')!=='true')return false;
     return Object.entries(params).every(([key,value])=>{
      const control=document.querySelector('#inspector [data-target="params"][data-key="'+key+'"]');
      return !control||String(control.value)===String(value);
@@ -115,14 +116,13 @@ function pixelDocument(engine,encodeColorMap){
    await field.selectOption(String(value));
    await page.waitForFunction(({key,expected})=>document.querySelector('#inspector [data-target="params"][data-key="'+key+'"]')?.value===expected,{key,expected:String(value)},{timeout:10000});
   };
-  const sourceField=async()=>{
-   const details=await ensureSection('image-source');
-   return details.locator('select[data-target="layer"][data-key="imageSource"]');
-  };
-  const setSource=async(value)=>{
-   const field=await sourceField();
-   await field.selectOption(String(value));
-   await page.waitForFunction(expected=>document.querySelector('#inspector select[data-key="imageSource"]')?.value===expected,String(value),{timeout:10000});
+  const sourceButton=mode=>page.locator('#inspector [data-action="image-source"][data-mode="'+mode+'"]');
+  const activeSourceMode=()=>page.locator('#inspector [data-action="image-source"][aria-pressed="true"]').getAttribute('data-mode');
+  const setSource=async(mode)=>{
+   assert.ok(['all','below','none'].includes(mode),'source mode is available from the layer toolbar');
+   await ensureSection('image-source');
+   await sourceButton(mode).click();
+   await page.waitForFunction(expected=>document.querySelector('#inspector [data-action="image-source"][aria-pressed="true"]')?.dataset.mode===expected,mode,{timeout:10000});
   };
   const selectLayer=async(id)=>{
    await page.locator('#layer-list [data-action="select-layer"][data-id="'+id+'"]').click();
@@ -147,7 +147,9 @@ function pixelDocument(engine,encodeColorMap){
   };
 
   await load(initial.doc);
-  assert.equal(await (await sourceField()).inputValue(),'all','Pixel source selector defaults to all');
+  assert.equal(await activeSourceMode(),'all','Pixel source toolbar defaults to all image sources');
+  assert.equal(await page.locator('#inspector select[data-key="imageSource"]').count(),0,'image-source dropdown was removed');
+  assert.equal(await page.locator('#inspector .image-source-field [data-action="add-layer"]').count(),0,'source panel no longer contains the add-effect button');
 
   // Pixel dimensions and processing controls use their real inspector fields.
   await setParam('sizeMode','width');
@@ -183,13 +185,13 @@ function pixelDocument(engine,encodeColorMap){
 
   // Reload clean defaults before source sampling and visibility checks.
   await load(initial.doc,'pixel-sources.ctm');
-  const sourceOptions=await (await sourceField()).locator('option').evaluateAll(nodes=>nodes.map(node=>node.value));
-  for(const value of ['all','none','auto',initial.redId,initial.greenId])assert.ok(sourceOptions.includes(value),'source selector exposes '+value);
+  const sourceModes=await page.locator('#inspector [data-action="image-source"]').evaluateAll(nodes=>nodes.map(node=>node.dataset.mode).sort());
+  assert.deepEqual(sourceModes,['all','below','none'],'source toolbar exposes all, below and none');
   await setSource('none');
   await page.locator('[data-action="undo"]').click();
-  await page.waitForFunction(()=>document.querySelector('#inspector select[data-key="imageSource"]')?.value==='all');
+  await page.waitForFunction(()=>document.querySelector('#inspector [data-action="image-source"][aria-pressed="true"]')?.dataset.mode==='all');
   await page.locator('[data-action="redo"]').click();
-  await page.waitForFunction(()=>document.querySelector('#inspector select[data-key="imageSource"]')?.value==='none');
+  await page.waitForFunction(()=>document.querySelector('#inspector [data-action="image-source"][aria-pressed="true"]')?.dataset.mode==='none');
   await setSource('all');
   await setParam('sizeMode','width');await setNumber('pixelCount',4);await setNumber('colorCount',2);await setParam('paletteMode','auto');
   await page.locator('[data-action="pixel-output"][data-mode="grid"]').click();
@@ -213,24 +215,18 @@ function pixelDocument(engine,encodeColorMap){
   assert.ok(alphaValues.every(alpha=>alpha===0||alpha===255),'binary Pixel grid contains only transparent or fully opaque alpha');
   assert.deepEqual(leftSourcePixel,[255,0,0,255],'left-positioned red source contributes an opaque red cell');
   assert.deepEqual(rightSourcePixel,[0,255,0,255],'right-positioned green source contributes an opaque green cell');
-  await setSource(initial.redId);
-  const savedRed=await save();
-  await setSource(initial.greenId);
-  await load(savedRed,'pixel-source-roundtrip.ctm');
-  assert.equal(await (await sourceField()).inputValue(),initial.redId,'load restores a specific image source');
-  await setSource('none');
-  await setSource(initial.redId);
+  await setSource('below');
+  const savedBelow=await save();
+  assert.equal(savedBelow.layers.find(layer=>layer.id===initial.pixelId).imageSource,'below','save preserves the below source mode');
+  await setSource('all');
+  await load(savedBelow,'pixel-source-roundtrip.ctm');
+  assert.equal(await activeSourceMode(),'below','load restores the below source mode');
+  await setSource('all');
   await page.locator('[data-action="undo"]').click();
-  await page.waitForFunction(()=>document.querySelector('#inspector select[data-key="imageSource"]')?.value==='none');
+  await page.waitForFunction(()=>document.querySelector('#inspector [data-action="image-source"][aria-pressed="true"]')?.dataset.mode==='below');
   await page.locator('[data-action="redo"]').click();
-  await page.waitForFunction(expected=>document.querySelector('#inspector select[data-key="imageSource"]')?.value===expected,initial.redId);
-  await selectLayer(initial.redId);
-  await page.locator('#layer-list [data-action="visibility"][data-id="'+initial.redId+'"]').click();
-  await selectLayer(initial.pixelId);
-  const explicitHidden=await exportPNG();
-  assert.deepEqual([...new Set(Array.from({length:explicitHidden.data.length/4},(_,index)=>explicitHidden.data[index*4+3]))],[0],'an explicitly selected hidden source stays transparent while another image is available');
-  await page.locator('#layer-list [data-action="visibility"][data-id="'+initial.redId+'"]').click();
-  console.log('PASS all/none/auto and explicit sources, undo/redo, save/load, simultaneous positional contributions and hidden-source transparency');
+  await page.waitForFunction(()=>document.querySelector('#inspector [data-action="image-source"][aria-pressed="true"]')?.dataset.mode==='all');
+  console.log('PASS all/none/below source toolbar, undo/redo, save/load and simultaneous image contributions');
 
   // Raw-image mode displays the source itself and obeys layer visibility.
   await selectLayer(initial.redId);
@@ -240,7 +236,14 @@ function pixelDocument(engine,encodeColorMap){
   const rawDoc=await save();assert.equal(rawDoc.layers.find(layer=>layer.id===initial.redId).mode,'image');
   const rawImage=rawDoc.layers.find(layer=>layer.id===initial.redId).image;
   assert.equal(await sourceImageCount(rawImage),1,'raw image mode places the source image in the rendered SVG');
-  await assertNoHorizontalOverflow('image layer zh');
+  await selectLayer(initial.pixelId);
+  const rawPixel=rawDoc.layers.find(layer=>layer.id===initial.pixelId);
+  const rawSources=engine.resolveColorSources(rawDoc,rawPixel);
+  assert.deepEqual(rawSources.map(source=>source.id),[initial.redId,initial.greenId],'all source mode resolves both color and raw-image layers for Pixel sampling');
+  const rawRaster=engine.getPixelData(rawDoc,rawPixel);
+  assert.deepEqual([...rawRaster.pixels.slice(0,4)],[255,0,0,255],'Pixel raster samples the raw-image layer at the red source position');
+  const greenOffset=3*4;
+  assert.deepEqual([...rawRaster.pixels.slice(greenOffset,greenOffset+4)],[0,255,0,255],'Pixel raster keeps the green color layer contribution alongside the raw image');  await assertNoHorizontalOverflow('image layer zh');
   await page.screenshot({path:path.join(output,'image-layer-zh.png'),fullPage:true});
   await page.locator('#layer-list [data-action="visibility"][data-id="'+initial.redId+'"]').click();
   assert.equal(await sourceImageCount(rawImage),0,'hiding a raw image layer removes it from the rendered SVG');
@@ -252,24 +255,24 @@ function pixelDocument(engine,encodeColorMap){
 
   // Add a second pattern through the existing library control and share one source.
   await selectLayer(initial.pixelId);
-  await setSource(initial.redId);
+  await setSource('all');
   await page.locator('.library .layer-add-actions [data-action="add-layer"]').click();
   await page.waitForFunction(()=>document.querySelectorAll('#layer-list .layer:not(.image-mask-layer)').length===2);
   const secondId=await page.locator('#layer-list .layer.selected [data-action="select-layer"]').getAttribute('data-id');
   assert.ok(secondId&&secondId!==initial.pixelId,'add-layer creates a distinct pattern layer');
-  assert.equal(await (await sourceField()).inputValue(),initial.redId,'new layer carries the current source choice');
+  assert.equal(await activeSourceMode(),'all','new layer carries the current source mode');
   await page.locator('#pattern-list [data-pattern="lowpoly"]').click();
   await page.waitForFunction(()=>document.querySelector('#pattern-list [data-pattern="lowpoly"]')?.getAttribute('aria-pressed')==='true');
-  await setSource(initial.redId);
+  await setSource('all');
   await setOpacity(0.65);
   await selectLayer(initial.pixelId);
-  await setSource(initial.redId);
+  await setSource('all');
   await setParam('paletteMode','grayscale');await setNumber('colorCount',2);await setNumber('pixelCount',32);await setParam('sizeMode','longEdge');await setParam('dither','none');await setOpacity(0.35);
   await ensureSection('pixel-processing');
   await page.screenshot({path:path.join(output,'pixel-advanced-zh.png'),fullPage:true});
   const shared=await save();
   const sharedPixel=shared.layers.find(layer=>layer.id===initial.pixelId),sharedLowPoly=shared.layers.find(layer=>layer.id===secondId);
-  assert.equal(sharedPixel.imageSource,initial.redId);assert.equal(sharedLowPoly.imageSource,initial.redId);
+  assert.equal(sharedPixel.imageSource,'all');assert.equal(sharedLowPoly.imageSource,'all');
   assert.equal(sharedPixel.opacity,0.35);assert.equal(sharedLowPoly.opacity,0.65);
   const patternOrder=shared.layers.filter(layer=>layer.type!=='imageMask').map(layer=>layer.id);
   assert.deepEqual(patternOrder,[initial.pixelId,secondId],'new pattern is composited above the existing pattern');
@@ -286,7 +289,9 @@ function pixelDocument(engine,encodeColorMap){
   const legacy=pixelDocument(engine,encodeColorMap);
   for(const layer of legacy.layers)if(layer.type!=='imageMask')delete layer.imageSource;
   await load(legacy,'pixel-legacy.ctm');
-  assert.equal(await (await sourceField()).inputValue(),'auto','older projects without a source field retain automatic source selection');
+  assert.equal(await activeSourceMode(),'below','legacy automatic sources are represented by the below toolbar state');
+  const legacyRoundTrip=await save();
+  assert.equal(legacyRoundTrip.layers.find(layer=>layer.id===initial.pixelId).imageSource,'auto','loading and saving a legacy project preserves its original automatic source value');
   assert.deepEqual(errors,[],'headless browser completed without page errors');
   console.log('PASS two pattern layers share an image source, keep independent opacity, and render in saved layer order');
   console.log('Screenshots:',path.join(output,'image-layer-zh.png'),'and',path.join(output,'pixel-advanced-zh.png'));

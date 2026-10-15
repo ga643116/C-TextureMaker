@@ -133,4 +133,42 @@ body.file-dropping:after{content:attr(data-drop-hint);position:fixed;inset:12px;
 .pixel-readout{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 0;font-size:13px}
 .pixel-readout strong{white-space:nowrap}
 
-.image-source-field .field-title{display:block;margin-bottom:7px}.image-source-field select{min-width:0;text-overflow:ellipsis}.image-source-field .image-color-launch{width:100%;margin-top:8px}
+.image-source-field .field-title{display:block;margin-bottom:7px}
+
+
+/* Hierarchical layer tree and image source controls. */
+.layer-list{max-height:min(34vh,340px);overflow-y:auto;overflow-x:hidden;gap:2px;scrollbar-gutter:stable}
+.layer{position:relative;padding-left:calc(3px + var(--layer-depth,0)*13px);transition:opacity .12s ease}
+.layer-row{min-height:30px}
+.layer-select{display:flex;align-items:center;gap:5px;min-height:26px;padding-inline:4px}
+.layer-select .layer-name{flex:1;text-align:left}
+.layer-pattern-thumb{width:24px;height:22px;display:flex;flex:0 0 24px;align-items:center;justify-content:center;overflow:hidden;background:var(--hover);border-radius:3px}
+.layer-pattern-thumb img{width:100%;height:100%;object-fit:contain}
+.layer-folder-icon{display:flex;flex:0 0 16px;align-items:center;color:var(--muted)}
+.layer-folder-icon .icon,.layer-clip .icon{width:13px;height:13px}
+.layer-clip{display:inline-flex;align-items:center;color:var(--ink);flex:0 0 13px}
+.layer-count{font:500 10px Consolas,monospace;color:var(--muted);background:var(--hover);border-radius:8px;padding:1px 5px}
+.layer.multi-selected:not(.selected){border-color:var(--line);background:color-mix(in srgb,var(--selected) 55%,transparent)}
+.layer.inherited-hidden{opacity:.58}
+.layer.group-layer>.layer-row .layer-select{font-weight:650}
+.layer .group-toggle{flex:0 0 23px}
+.layer-add-actions{gap:0}
+.layer-add-actions .icon-btn{width:24px;height:26px;padding:5px}
+.layer-root-drop{min-height:26px;display:flex;align-items:center;justify-content:center;margin:3px 2px 0;border:1px dashed var(--line);border-radius:4px;color:var(--muted);font-size:10px;transition:background .12s,border-color .12s}
+.layer-root-drop.drag-target{border-color:var(--accent);background:var(--selected);color:var(--ink)}
+.layer.drop-before:before,.layer.drop-after:after{content:"";position:absolute;left:calc(2px + var(--layer-depth,0)*13px);right:2px;height:2px;background:var(--accent);z-index:2}
+.layer.drop-before:before{bottom:-2px}
+.layer.drop-after:after{top:-2px}
+.layer.drop-inside{outline:2px solid var(--accent);outline-offset:-2px;background:var(--selected)}
+.layer.dragging{opacity:.38}
+.image-source-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.image-source-modes .button{min-width:0;padding:5px 4px;font-size:11px;white-space:nowrap}
+.image-source-modes .button.active{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.image-source-hint{overflow-wrap:anywhere}
+.group-inspector-head h1{display:flex;align-items:center;gap:8px;overflow-wrap:anywhere}
+.group-inspector-head h1 .icon{width:19px;height:19px;flex:0 0 19px;color:var(--accent)}
+.group-name-field{margin-top:14px}
+.group-name-field span{font-size:12px;font-weight:600}
+.group-name-field input{width:100%;height:34px;margin-top:5px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--ink);font:inherit}
+.group-counts{font-size:13px;font-weight:600}
+@media(max-width:950px){.layer-add-actions .icon-btn{width:22px;padding:5px}.layer{padding-left:calc(2px + var(--layer-depth,0)*10px)}}

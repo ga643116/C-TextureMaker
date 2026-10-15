@@ -8,9 +8,9 @@ import assert from 'node:assert/strict';
 import { PNG } from 'pngjs';
 import { Resvg } from '@resvg/resvg-js';
 import {
-  createCompositeColorSampler, createDocument, createImageMaskLayer, createLayer,
+  createCompositeColorSampler, createDocument, createGroup, createImageMaskLayer, createLayer,
   hasColorSource, imageMaskGeometry, normalizeDocument, renderSVG, resetLayerPattern,
-  resolveColorSources, switchLayerPattern,
+  resolveBelowMasks, resolveColorSources, switchLayerPattern,
 } from '../app/engine.mjs';
 import { createImageColorSampler, encodeColorMap } from '../app/image-color.mjs';
 import { applyUserPreset, createUserPreset, readPreset } from '../app/user-presets.mjs';
@@ -59,6 +59,87 @@ test('all composites visible color layers bottom-to-top with premultiplied alpha
   blue.visible = false;
   assert.deepEqual(resolveColorSources(doc, pattern).map(layer => layer.id), ['red']);
   assert.deepEqual(sample(doc, pattern), [255, 0, 0, 255]);
+});
+
+test('all includes raw image layers as sampling sources', () => {
+  const pattern = createLayer('dots', 'sample-all');
+  pattern.imageSource = 'all';
+  const raw = imageLayer('raw-all', [0, 255, 0, 255], { mode: 'image' });
+  const doc = documentWith([pattern, raw]);
+  assert.deepEqual(resolveColorSources(doc, pattern).map(layer => layer.id), ['raw-all']);
+  assert.deepEqual(sample(doc, pattern), [0, 255, 0, 255]);
+});
+
+test('below resolves one nearest base for each effect, including the same base for adjacent effects', () => {
+  const base = imageLayer('shared-base', [220, 40, 60, 255], { mode: 'image' });
+  const first = createLayer('dots', 'effect-first');
+  const second = createLayer('grid', 'effect-second');
+  first.imageSource = second.imageSource = 'below';
+  const doc = documentWith([base, first, second]);
+
+  assert.deepEqual(resolveColorSources(doc, first).map(layer => layer.id), ['shared-base']);
+  assert.deepEqual(resolveColorSources(doc, second).map(layer => layer.id), ['shared-base']);
+  const svg = renderSVG(doc);
+  assert.match(svg, /<g id="image-color-source-effect-first"><use href="#image-source-shared-base"\/><\/g>/);
+  assert.match(svg, /<g id="image-color-source-effect-second"><use href="#image-source-shared-base"\/><\/g>/);
+  assert.equal(svg.split(base.image).length - 1, 1, 'the shared source image should be embedded only once');
+  assert.ok(raster(svg).width > 0, 'the SVG export should rasterize');
+});
+
+test('below group masks intersect their own color source and do not mask another group effect', () => {
+  const folderA = createGroup('folder-a', 'Folder A');
+  const folderB = createGroup('folder-b', 'Folder B');
+  const red = imageLayer('red-base', [255, 0, 0, 255], { mode: 'color' });
+  const whiteMask = imageLayer('white-mask', [255, 255, 255, 255], { mode: 'mask' });
+  const green = imageLayer('green-base', [0, 255, 0, 255], { mode: 'color' });
+  red.parentId = whiteMask.parentId = 'folder-a';
+  green.parentId = 'folder-b';
+  const effectA = createLayer('dots', 'effect-a');
+  const effectB = createLayer('dots', 'effect-b');
+  effectA.imageSource = effectB.imageSource = 'below';
+  for (const effect of [effectA, effectB]) {
+    effect.params.spacing = 128;
+    effect.params.size = 96;
+  }
+  const doc = documentWith([red, whiteMask, folderA, effectA, green, folderB, effectB]);
+
+  assert.deepEqual(resolveColorSources(doc, effectA).map(layer => layer.id), ['red-base']);
+  assert.deepEqual(resolveBelowMasks(doc, effectA).map(layer => layer.id), ['white-mask']);
+  assert.deepEqual(resolveBelowMasks(doc, effectB), []);
+  assert.deepEqual(sample(doc, effectA), [255, 0, 0, 255]);
+  assert.deepEqual(sample(doc, effectB), [0, 255, 0, 255]);
+  const output = raster(renderSVG(doc));
+  let hasGreen = false;
+  let hasRed = false;
+  for (let offset = 0; offset < output.data.length; offset += 4) {
+    const [r, g, b, a] = output.data.subarray(offset, offset + 4);
+    if (a > 0 && g > r && g > b) hasGreen = true;
+    if (a > 0 && r > g && r > b) hasRed = true;
+  }
+  assert.equal(hasGreen, true, 'the unrelated second group effect should remain visible');
+  assert.equal(hasRed, false, 'the first group mask should suppress only its own effect');
+});
+
+test('below mask-only bases keep native pattern color, while hidden group bases resolve transparent', () => {
+  const folder = createGroup('mask-folder', 'Mask folder');
+  const mask = imageLayer('mask-only', [0, 0, 0, 255], { mode: 'mask' });
+  mask.parentId = folder.id;
+  const pattern = createLayer('dots', 'mask-only-effect');
+  pattern.imageSource = 'below';
+  pattern.params.spacing = 128;
+  pattern.params.size = 96;
+  const doc = documentWith([mask, folder, pattern]);
+  assert.deepEqual(resolveColorSources(doc, pattern), []);
+  assert.equal(hasColorSource(doc, pattern), false);
+  assert.equal(createCompositeColorSampler(doc, pattern), null);
+  const native = raster(renderSVG(doc));
+  assert.ok(native.data.some((value, index) => index % 4 === 3 && value > 0), 'mask-only sources should preserve the pattern color render');
+
+  folder.visible = false;
+  assert.deepEqual(resolveColorSources(doc, pattern), []);
+  assert.equal(hasColorSource(doc, pattern), true, 'a hidden configured base remains an intentional transparent source');
+  assert.deepEqual(sample(doc, pattern), [0, 0, 0, 0]);
+  assert.equal(renderSVG(doc).includes(mask.image), false, 'hidden group masks should not be emitted into the export');
 });
 
 test('auto, none and explicit image selection preserve source scope per pattern', () => {

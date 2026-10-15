@@ -77,11 +77,14 @@ Pixel を選び、色レイヤーとして画像を読み込んでから Pixel �
 
 圖片來源與 Pixel / Image sources and Pixel / 画像ソースと Pixel
 -------------------------------------------------------------
-各圖樣的「圖片來源」可選單一圖片、合成所有圖片色彩圖層，或不使用圖片。按「新增圖樣效果」再選另一圖樣，可共用來源並上下疊加；不透明上層會遮住下層。圖片的「顯示原圖」模式會直接顯示原圖。舊專案保留最上方圖片模式，可自行改選來源。
+各圖樣的「圖片來源」切換為「全圖層／圖片／無圖片」。「圖片」使用下方最近的圖片或群組，連續多個效果可共用同一基底，箭頭表示套用關係；不透明上層仍會遮住下層。舊專案原有指定來源先保留，重新按「圖片」後才改依圖層位置取用。
+Ctrl＋點擊可複選，Shift＋點擊選取範圍；Ctrl+G 群組，Ctrl+Shift+G 解除群組。拖曳圖層可上下排序，拖到群組中央可移入，拖到列表的最外層區域可移出。群組可展開／收合、改名及隱藏，隱藏群組會一併隱藏內容。圖片的「顯示原圖」模式會直接顯示原圖。群組專案請使用此測試版或更新版本開啟。
 Pixel 可依長邊格數、寬度或像素塊尺寸調整密度，並選平均／最近鄰取樣、2–256 色、抖色及亮度／對比／飽和度。「實際像素格尺寸」將每格輸出為1 px；PNG會合成所有可見圖層。與其他工具比較時，請先對齊實際輸出寬高及色數。
 
-Each pattern's Image source can select one image, composite all color layers, or use no image. Add a pattern effect, then choose another pattern to share a source and stack results. Opaque upper layers cover lower ones. Original image mode displays the source itself. Old projects retain the topmost-image mode until you change it.
+Image source now switches between All layers, Image and No image. Image uses the nearest image or group below; consecutive effects share that base, indicated by clipping arrows. Opaque upper layers cover lower ones. Existing source bindings in old projects remain until you select Image again.
+Ctrl-click selects multiple layers; Shift-click selects a range. Ctrl+G groups and Ctrl+Shift+G ungroups. Drag to reorder, drop in a folder's center to move inside, or on the root drop area to move out. Groups support collapse, rename and visibility, including their contents. Original image mode shows the image itself. Open grouped projects with this test build or newer.
 Pixel density can follow long-edge count, width, or block size. Choose average/nearest sampling, 2–256 colors, dithering, and brightness/contrast/saturation. Actual pixel grid exports one cell as 1 px; PNG composites all visible layers. Match output width, height and color count when comparing tools.
 
-各パターンの「画像ソース」で1枚の画像、すべての色レイヤーの合成、画像なしを選べます。「パターン効果を追加」して別のパターンを選ぶと、同じ画像を参照して重ねられます。上の不透明部分は下を覆います。「元画像を表示」は画像自体を表示します。旧プロジェクトは変更するまで最上位画像の方式を保持します。
+画像ソースは「全レイヤー／画像／画像なし」を切り替えます。「画像」は直下にある画像またはグループを参照し、連続する複数の効果で同じベースを共有します。矢印が参照関係を示します。上の不透明部分は下を覆います。旧プロジェクトの参照は「画像」を選び直すまで保持します。
+Ctrl＋クリックで複数選択、Shift＋クリックで範囲選択。Ctrl+Gでグループ化、Ctrl+Shift+Gで解除します。ドラッグで並べ替え、フォルダー中央にドロップして移入、ルートのドロップ領域に移動して外へ出せます。グループは折りたたみ、名前変更、内容ごとの表示切り替えに対応します。「元画像を表示」は画像自体を表示します。グループを含むプロジェクトはこのテスト版以降で開いてください。
 Pixelの密度は長辺のセル数、幅、ブロックサイズで調整できます。平均／最近傍サンプリング、2〜256色、ディザリング、明るさ／コントラスト／彩度を設定できます。「実ピクセルサイズ」は1セルを1 pxで出力し、PNGは表示中の全レイヤーを合成します。他のツールと比べる際は出力の幅・高さ・色数を揃えてください。

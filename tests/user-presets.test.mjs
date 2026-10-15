@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDocument, createImageMaskLayer, createLayer, isImageMaskLayer, switchLayerPattern } from '../app/engine.mjs';
+import { createDocument, createGroup, createImageMaskLayer, createLayer, isImageMaskLayer, switchLayerPattern } from '../app/engine.mjs';
 import { applyUserPreset, createUserPreset, presetPreview, readPreset } from '../app/user-presets.mjs';
 
 const image = 'data:image/svg+xml;base64,' + Buffer.from(
@@ -153,6 +153,33 @@ test('legacy presets normalize a copy, choose the first pattern, and retain thei
   assert.equal(data.seed, legacyDoc.seed);
   assert.equal(preview.layers.length, 3);
   assert.equal(JSON.stringify(legacyPreset), before);
+});
+
+test('legacy grouped presets detach membership and apply safely outside their source group', () => {
+  const legacyDoc = createDocument();
+  const groupedPattern = { ...createLayer('halftone', 'grouped-pattern'), parentId: 'legacy-folder' };
+  const folder = createGroup('legacy-folder', 'Legacy folder');
+  legacyDoc.layers = [groupedPattern, folder];
+  const legacyPreset = { id: 'legacy-grouped', name: 'Grouped legacy', document: legacyDoc };
+
+  const read = readPreset(legacyPreset);
+  assert.equal(read.layer.id, 'grouped-pattern');
+  assert.equal(Object.hasOwn(read.layer, 'parentId'), false);
+
+  const targetDoc = createDocument();
+  targetDoc.layers = [createLayer('dots', 'outside-target')];
+  const applied = applyUserPreset(targetDoc, 'outside-target', legacyPreset);
+  const layer = applied.document.layers.find(candidate => candidate.id === 'outside-target');
+  assert.equal(layer.type, 'halftone');
+  assert.equal(Object.hasOwn(layer, 'parentId'), false);
+
+  const emptyFolder = createGroup('empty-folder', 'Empty folder');
+  const outsidePattern = createLayer('dots', 'outside-pattern');
+  const groupedTarget = createDocument();
+  groupedTarget.layers = [emptyFolder, outsidePattern];
+  const added = applyUserPreset(groupedTarget, 'empty-folder', legacyPreset, 'added-pattern');
+  assert.equal(added.selectedId, 'added-pattern');
+  assert.equal(added.document.layers.find(candidate => candidate.id === 'added-pattern').parentId, 'empty-folder');
 });
 
 test('invalid presets and image-capacity overflow are rejected without mutating inputs', () => {

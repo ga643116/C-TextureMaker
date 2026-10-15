@@ -10,6 +10,7 @@ import { createImageSources } from './image-sources.mjs';
 import { renderContours } from './contours.mjs';
 import { renderLowPoly } from './low-poly.mjs';
 import { createPixelArtEngine } from './pixel-art.mjs';
+import { canonicalizeLayers, isGroupLayer, isLayerVisible } from './layer-tree.mjs';
 
 const tr = (zh, en, ja) => ({ zh, en, ja });
 const L = {
@@ -121,6 +122,7 @@ export function switchLayerPattern(layer, type) {
   const patternSettings = clonePatternSettings(layer.patternSettings ?? {}, layer.type);
   const next = createLayer(type, layer.id);
   next.visible = layer.visible;
+  if (Object.hasOwn(layer, 'parentId')) next.parentId = layer.parentId;
   if (Object.hasOwn(patternSettings, type)) {
     const restored = patternSettings[type];
     for (const key of PATTERN_SETTING_KEYS) next[key] = key === 'pixelPalette' && restored[key] === undefined ? [] : key === 'imageSource' && restored[key] === undefined ? 'auto' : restored[key];
@@ -140,6 +142,7 @@ export function resetLayerPattern(layer) {
   assertPatternLayer(layer);
   const next = createLayer(layer.type, layer.id);
   next.visible = layer.visible;
+  if (Object.hasOwn(layer, 'parentId')) next.parentId = layer.parentId;
   next.color = layer.color;
   next.secondary = layer.secondary;
   next.imageSource = layer.imageSource ?? 'auto';
@@ -150,6 +153,7 @@ const IMAGE_MASK_FIELDS = new Set(['id','type','name','visible','image','imageWi
 const IMAGE_MASK_REQUIRED = [...IMAGE_MASK_FIELDS];
 IMAGE_MASK_FIELDS.add('mode');
 IMAGE_MASK_FIELDS.add('colorMap');
+IMAGE_MASK_FIELDS.add('parentId');
 
 const IMAGE_MASK_MAX_LENGTH = 22400000;
 const IMAGE_MASK_VALIDATION_CACHE_CHARS = 24000000;
@@ -213,6 +217,7 @@ function normalizeImageMaskLayer(raw) {
   for (const key of IMAGE_MASK_REQUIRED) assert(Object.hasOwn(raw, key), `Missing image mask field: ${key}`);
   assert(raw.type === 'imageMask', 'Invalid image mask type');
   assert(safeId(raw.id), 'Invalid image mask id');
+  assert(raw.parentId === undefined || raw.parentId === null || safeId(raw.parentId), 'Invalid image mask parent');
   assert(typeof raw.name === 'string' && !/[\u0000-\u001f\u007f-\u009f]/.test(raw.name), 'Invalid image mask name');
   const name = raw.name.trim();
   assert(name.length >= 1 && name.length <= 80, 'Invalid image mask name');
@@ -229,7 +234,7 @@ function normalizeImageMaskLayer(raw) {
   const mode=raw.mode??'mask',colorMap=normalizeColorMap(raw.colorMap);
   assert(mode==='mask'||mode==='color'||mode==='image','Invalid image mode');
   assert(mode!=='color'||colorMap,'Image color mode requires a color map');
-  return { mode, colorMap, id:raw.id, type:'imageMask', name, visible:raw.visible, image:validateImageMaskDataImage(raw.image), imageWidth:raw.imageWidth, imageHeight:raw.imageHeight, threshold:raw.threshold, invert:raw.invert, fit:raw.fit, scale:raw.scale, rotation:raw.rotation, offsetX:raw.offsetX, offsetY:raw.offsetY, flipX:raw.flipX, flipY:raw.flipY };
+  return { mode, colorMap, id:raw.id, type:'imageMask', name, visible:raw.visible, image:validateImageMaskDataImage(raw.image), imageWidth:raw.imageWidth, imageHeight:raw.imageHeight, threshold:raw.threshold, invert:raw.invert, fit:raw.fit, scale:raw.scale, rotation:raw.rotation, offsetX:raw.offsetX, offsetY:raw.offsetY, flipX:raw.flipX, flipY:raw.flipY, ...(typeof raw.parentId === 'string' ? { parentId:raw.parentId } : {}) };
 }
 
 export function createImageMaskLayer({ id = `image-mask-${Date.now().toString(36)}-${(++layerCounter).toString(36)}`, name = 'Image layer', image, imageWidth, imageHeight, mode = 'mask', colorMap = null }) {
@@ -307,7 +312,7 @@ function normalizePatternState(type, raw, width, height) {
   const pixelPalette = raw.pixelPalette === undefined ? [] : raw.pixelPalette;
   assert(Array.isArray(pixelPalette) && pixelPalette.length <= 256 && pixelPalette.every(color => hex(color)), 'Invalid pixel palette');
   const imageSource = Object.hasOwn(raw, 'imageSource') ? raw.imageSource : 'auto';
-  assert(typeof imageSource === 'string' && (['auto','all','none'].includes(imageSource) || safeId(imageSource)), 'Invalid image source');
+  assert(typeof imageSource === 'string' && (['auto','all','none','below'].includes(imageSource) || safeId(imageSource)), 'Invalid image source');
   return {
     opacity: Math.min(1, Math.max(0, raw.opacity)),
     imageSource,
@@ -347,8 +352,8 @@ function normalizePatternSettings(activeType, value, width, height) {
 export function normalizeDocument(input) {
   assert(isObject(input), 'Document must be an object');
   const fields = new Set(['version','name','width','height','transparent','background','seamless','seed','aspectRatio','layers']);
-  for (const k of Object.keys(input)) assert(fields.has(k), `Unknown document field: ${k}`);
-  assert(input.version === 1, `Unsupported document version: ${input.version}`);
+  for (const k of Object.keys(input)) assert(fields.has(k), 'Unknown document field: ' + k);
+  assert(input.version === 1, 'Unsupported document version: ' + input.version);
   assert(typeof input.name === 'string' && input.name.length > 0 && input.name.length <= 128 && !/[\u0000-\u001f]/.test(input.name), 'Invalid document name');
   assert(Number.isFinite(input.width) && Number.isFinite(input.height), 'Invalid document dimensions');
   if (Object.hasOwn(input, 'aspectRatio')) {
@@ -360,37 +365,60 @@ export function normalizeDocument(input) {
   assert(typeof input.transparent === 'boolean' && typeof input.seamless === 'boolean', 'Invalid document flags');
   assert(hex(input.background), 'Invalid background color');
   assert(Number.isInteger(input.seed) && input.seed >= 1 && input.seed <= 999999, 'Invalid seed');
-  assert(Array.isArray(input.layers) && input.layers.length >= 1 && input.layers.length <= 16, 'Document must have 1 to 16 layers');
-  const width=Math.round(Math.min(4096,Math.max(128,input.width))),height=Math.round(Math.min(4096,Math.max(128,input.height)));
-  const ids = new Set(); let patternCount = 0;
+  assert(Array.isArray(input.layers) && input.layers.length >= 1 && input.layers.length <= 32, 'Document must have 1 to 16 content layers and up to 16 groups');
+  const width = Math.round(Math.min(4096, Math.max(128, input.width))), height = Math.round(Math.min(4096, Math.max(128, input.height)));
+  const ids = new Set();
+  let patternCount = 0, contentCount = 0, groupCount = 0;
   const layers = input.layers.map(raw => {
     assert(isObject(raw), 'Layer must be an object');
-    assert(safeId(raw.id) && !ids.has(raw.id), 'Invalid or duplicate layer id'); ids.add(raw.id);
+    assert(safeId(raw.id) && !ids.has(raw.id), 'Invalid or duplicate layer id');
+    ids.add(raw.id);
+    if (raw.type === 'group') {
+      groupCount++;
+      const keys = new Set(['id','type','name','visible','collapsed','parentId']);
+      for (const key of Object.keys(raw)) assert(keys.has(key), 'Unknown group field: ' + key);
+      assert(typeof raw.name === 'string' && !/[\u0000-\u001f\u007f-\u009f]/.test(raw.name), 'Invalid group name');
+      const name = raw.name.trim();
+      assert(name.length >= 1 && name.length <= 80, 'Invalid group name');
+      assert(typeof raw.visible === 'boolean', 'Invalid group visibility');
+      assert(typeof raw.collapsed === 'boolean', 'Invalid group collapsed state');
+      assert(raw.parentId === undefined || raw.parentId === null || safeId(raw.parentId), 'Invalid group parent');
+      return { id:raw.id, type:'group', name, visible:raw.visible, collapsed:raw.collapsed, ...(typeof raw.parentId === 'string' ? { parentId:raw.parentId } : {}) };
+    }
+    contentCount++;
     if (raw.type === 'imageMask') return normalizeImageMaskLayer(raw);
-    assert(patternById.has(raw.type), `Unknown layer type: ${raw.type}`);
+    assert(patternById.has(raw.type), 'Unknown layer type: ' + raw.type);
     patternCount++;
-    const keys = new Set(['id','type','visible',...PATTERN_SETTING_KEYS,'patternSettings']);
-    for (const key of Object.keys(raw)) assert(keys.has(key), `Unknown layer field: ${key}`);
+    const keys = new Set(['id','type','visible','parentId',...PATTERN_SETTING_KEYS,'patternSettings']);
+    for (const key of Object.keys(raw)) assert(keys.has(key), 'Unknown layer field: ' + key);
     assert(typeof raw.visible === 'boolean', 'Invalid layer visibility');
+    assert(raw.parentId === undefined || raw.parentId === null || safeId(raw.parentId), 'Invalid layer parent');
     const layer = createLayer(raw.type, raw.id);
     layer.visible = raw.visible;
     Object.assign(layer, normalizePatternState(raw.type, raw, width, height));
+    if (typeof raw.parentId === 'string') layer.parentId = raw.parentId;
     layer.patternSettings = normalizePatternSettings(raw.type, raw.patternSettings, width, height);
     return layer;
   });
+  assert(contentCount <= 16, 'Document cannot contain more than 16 content layers');
+  assert(groupCount <= 16, 'Document cannot contain more than 16 groups');
   assert(patternCount >= 1, 'Document must have at least one pattern layer');
-  return {
+  const normalized = {
     version:1, name:input.name, width, height, transparent:input.transparent, background:input.background,
     seamless:input.seamless, seed:input.seed,
     ...(Object.hasOwn(input, 'aspectRatio') ? { aspectRatio: input.aspectRatio === null ? null : [...input.aspectRatio] } : {}),
     layers,
   };
+  canonicalizeLayers(normalized);
+  return normalized;
 }
 
 const imageSourceEngine = createImageSources({ isImageMaskLayer, imageMaskGeometry, createImageColorSampler });
 export const resolveColorSources = (doc, layer) => imageSourceEngine.resolveColorSources(doc, layer);
 export const hasColorSource = (doc, layer) => imageSourceEngine.hasColorSource(doc, layer);
 export const createCompositeColorSampler = (doc, layer, options) => imageSourceEngine.createCompositeColorSampler(doc, layer, options);
+export const resolveBelowMasks = (doc, layer) => imageSourceEngine.resolveBelowMasks(doc, layer);
+export * from './layer-tree.mjs';
 const pixelArtEngine = createPixelArtEngine({ normalizeDocument, isImageMaskLayer, imageMaskGeometry, createImageColorSampler, resolveColorSources, hasColorSource });
 export const getPixelGrid = (doc, layer) => pixelArtEngine.getPixelGrid(doc, layer);
 export const getPixelData = (doc, layer) => pixelArtEngine.getPixelData(doc, layer);
@@ -690,7 +718,7 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
   const doc=normalizeDocument(document);assert(repeat===1||repeat===3,'repeat must be 1 or 3');
   const W=doc.width,H=doc.height,fullW=W*repeat,fullH=H*repeat,parts=[];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${fullW}" height="${fullH}" viewBox="0 0 ${fullW} ${fullH}"${preview?' data-preview="true"':''}>`);
-  const visible=doc.layers.filter(layer=>!isImageMaskLayer(layer)&&layer.visible&&layer.opacity>0),imageMasks=doc.layers.filter(layer=>isImageMaskLayer(layer)&&layer.visible&&layer.mode==='mask'),hasRawImages=doc.layers.some(layer=>isImageMaskLayer(layer)&&layer.visible&&layer.mode==='image');
+  const visible=doc.layers.filter(layer=>!isGroupLayer(layer)&&!isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.opacity>0),imageMasks=doc.layers.filter(layer=>isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.mode==='mask'),hasRawImages=doc.layers.some(layer=>isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.mode==='image');
   parts.push('<defs><clipPath id="tile-base"><rect x="0" y="0" width="'+W+'" height="'+H+'"/></clipPath>');
   const imageRefs=new Map(),imageRefFor=layer=>{
     if(imageRefs.has(layer.id))return imageRefs.get(layer.id);
@@ -707,7 +735,7 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
     }
     colors.set(layer.id,{sampleColor,hasSource,sourceGroupId});
   }
-  for(const layer of doc.layers)if(isImageMaskLayer(layer)&&layer.visible&&layer.mode==='image')imageRefFor(layer);
+  for(const layer of doc.layers)if(isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.mode==='image')imageRefFor(layer);
   const imageMaskIds=[];
   for(const layer of imageMasks){
     const geometry=imageMaskGeometry(layer,doc),filterId=`image-mask-filter-${esc(layer.id)}`,maskId=`image-mask-${esc(layer.id)}`,cutoff=Math.min(255,Math.floor(layer.threshold*256/255)),table=Array.from({length:256},(_,index)=>((layer.invert?index>cutoff:index<=cutoff)?'1':'0')).join(' ');
@@ -762,20 +790,26 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
   for(let tileY=0;tileY<repeat;tileY++)for(let tileX=0;tileX<repeat;tileX++){
     const tx=tileX*W,ty=tileY*H;parts.push(`<g clip-path="url(#tile-base)" transform="translate(${tx} ${ty})">`);
     const oneMaskForPatterns=imageMaskIds.length>0&&!hasRawImages;
-    if(oneMaskForPatterns)parts.push('<g mask="url(#all-image-masks)">');
+    let globalMaskOpen=oneMaskForPatterns;
+    if(globalMaskOpen)parts.push('<g mask="url(#all-image-masks)">');
     for(const layer of doc.layers){
+      if(isGroupLayer(layer))continue;
       if(isImageMaskLayer(layer)){
-        if(layer.visible&&layer.mode==='image')parts.push(`<use href="#${imageRefs.get(layer.id)}"/>`);
+        if(isLayerVisible(doc,layer)&&layer.mode==='image')parts.push(`<use href="#${imageRefs.get(layer.id)}"/>`);
         continue;
       }
-      if(!layer.visible||layer.opacity<=0)continue;
+      if(!isLayerVisible(doc,layer)||layer.opacity<=0)continue;
+      if(oneMaskForPatterns&&layer.imageSource==='below'&&globalMaskOpen){parts.push('</g>');globalMaskOpen=false;}
+      else if(oneMaskForPatterns&&layer.imageSource!=='below'&&!globalMaskOpen){parts.push('<g mask="url(#all-image-masks)">');globalMaskOpen=true;}
       const source=sources.get(layer.id),range=copyRanges.get(layer.id);if(!source||!range)continue;
-      const wrapPatternMask=!oneMaskForPatterns&&imageMaskIds.length>0;
-      if(wrapPatternMask)parts.push('<g mask="url(#all-image-masks)">');
+      const masksToWrap=layer.imageSource==='below'
+        ? resolveBelowMasks(doc,layer).map(mask=>'image-mask-'+esc(mask.id))
+        : (!oneMaskForPatterns&&imageMaskIds.length>0 ? ['all-image-masks'] : []);
+      for(const maskId of masksToWrap)parts.push('<g mask="url(#'+maskId+')">');
       parts.push(`<g opacity="${fmt(layer.opacity)}">`);
       if(projectedColors.has(layer.id)){
         parts.push(`<use href="#${colors.get(layer.id).sourceGroupId}" mask="url(#image-color-shape-${layer.id})"/>`);
-        if(!preview){parts.push('</g>');if(wrapPatternMask)parts.push('</g>');continue;}
+        if(!preview){parts.push('</g>');for(let i=masksToWrap.length-1;i>=0;i--)parts.push('</g>');continue;}
         parts.push('<g opacity="0">');
       }
       for(let oy=range.y0;oy<=range.y1;oy++)for(let ox=range.x0;ox<=range.x1;ox++){
@@ -785,9 +819,9 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
       }
       if(projectedColors.has(layer.id))parts.push('</g>');
       parts.push('</g>');
-      if(wrapPatternMask)parts.push('</g>');
+      for(let i=masksToWrap.length-1;i>=0;i--)parts.push('</g>');
     }
-    if(oneMaskForPatterns)parts.push('</g>');
+    if(globalMaskOpen)parts.push('</g>');
     parts.push('</g>');
   }
   parts.push('</svg>');return parts.join('');
