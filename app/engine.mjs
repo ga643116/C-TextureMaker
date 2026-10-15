@@ -6,6 +6,7 @@
 import { fitPeriodicBasis, periodicCells, emptyBounds, includeBounds } from './periodic.mjs';
 import { renderSeamlessField } from './seamless-fields.mjs';
 import { normalizeColorMap, createImageColorSampler } from './image-color.mjs';
+import { createImageSources } from './image-sources.mjs';
 import { renderContours } from './contours.mjs';
 import { renderLowPoly } from './low-poly.mjs';
 import { createPixelArtEngine } from './pixel-art.mjs';
@@ -17,11 +18,11 @@ const L = {
   amplitude: tr('振幅','Amplitude','振幅'),
   count: tr('數量','Count','数'), minRadius: tr('最小半徑','Minimum radius','最小半径'), maxRadius: tr('最大半徑','Maximum radius','最大半径'), innerWidth: tr('內線寬','Inner line width','内側線幅'), outerWidth: tr('外線寬','Outer line width','外線幅'), sweep: tr('掃掠角度','Sweep','スイープ角度'), startAngle: tr('起始角度','Start angle','開始角度'), lineStyle: tr('線條樣式','Line style','線のスタイル'), dashLength: tr('虛線長度','Dash length','破線の長さ'), dashGap: tr('虛線間距','Dash gap','破線の間隔'), spacing: tr('間距','Spacing','間隔'), maxDot: tr('最大點徑','Maximum dot','最大ドット径'), minDot: tr('最小點徑','Minimum dot','最小ドット径'), gradient: tr('漸層','Gradient','グラデーション'), wave: tr('波形','Wave','波形'), angle: tr('角度','Angle','角度'), arrangement: tr('排列','Arrangement','配置'), shape: tr('形狀','Shape','形状'), overallShape: tr('整體範圍','Overall shape','全体の形'), radius: tr('半徑','Radius','半径'), stepWidth: tr('步進寬度','Step width','ステップ幅'), stepAngle: tr('步進角度','Step angle','ステップ角度'), stepDepth: tr('步進深度','Step depth','ステップ深さ'), bevel: tr('斜角','Bevel','ベベル'), endStyle: tr('端點樣式','End style','端のスタイル'), endLength: tr('端點長度','End length','端の長さ'), endAngle: tr('端點角度','End angle','端の角度'), strokeWidth: tr('線寬','Stroke width','線幅'), length: tr('長度','Length','長さ'), align: tr('對齊','Alignment','配置'), linecap: tr('端點','Line cap','線端'), majorEvery: tr('主刻度週期','Major tick interval','主目盛の間隔'), majorScale: tr('主刻度倍率','Major tick scale','主目盛倍率'), waveFrequency: tr('波動頻率','Wave frequency','波の周波数'), waveAmplitude: tr('波動幅度','Wave amplitude','波の振幅'), noise: tr('雜訊','Noise','ノイズ'), width: tr('寬度','Width','幅'), variation: tr('變化幅度','Variation','変化量'), height: tr('高度','Height','高さ'), frequency: tr('頻率','Frequency','周波数'), phase: tr('相位','Phase','位相'), style: tr('樣式','Style','スタイル'), direction: tr('方向','Direction','方向'), size: tr('尺寸','Size','サイズ'), finite: tr('固定格數','Fixed cell count','セル数を固定'), rows: tr('列數','Rows','行数'), columns: tr('欄數','Columns','列数'), cellSize: tr('格子尺寸','Cell size','セルサイズ'), shapeScale: tr('形狀倍率','Shape scale','形状倍率'), filled: tr('填滿','Filled','塗りつぶし'), showGrid: tr('顯示格線','Show grid','グリッドを表示'), peaks: tr('山峰數','Peak count','ピーク数'), terrainScale: tr('地形尺度','Terrain scale','地形スケール'), sampling: tr('取樣密度','Sampling density','サンプリング密度'), levels: tr('等高線層數','Contour levels','等高線の数'), octaves: tr('細節層數','Octaves','オクターブ数'), roughness: tr('粗糙度','Roughness','粗さ'), roundness: tr('圓角','Roundness','丸み'), shorten: tr('縮短量','Shortening','短縮量'), sides: tr('邊數','Sides','辺の数'), radiusStep: tr('半徑步進','Radius step','半径ステップ'), twist: tr('旋轉扭曲','Twist','ねじれ'), radiusX: tr('水平半徑','Horizontal radius','水平半径'), radiusY: tr('垂直半徑','Vertical radius','垂直半径'), longitudes: tr('經線數','Longitudes','経線数'), latitudes: tr('緯線數','Latitudes','緯線数'), tilt: tr('傾斜','Tilt','傾き'), diagonals: tr('對角線','Diagonals','対角線'), diagonalWidth: tr('對角線寬','Diagonal width','対角線幅'), diagonalStyle: tr('對角線樣式','Diagonal style','対角線のスタイル'), diagonalDashLength: tr('對角線虛線長度','Diagonal dash length','対角線の破線の長さ'), diagonalDashGap: tr('對角線虛線間距','Diagonal dash gap','対角線の破線の間隔'), cornerTrim: tr('交點留白','Intersection gap','交点の余白'), centerTrim: tr('格邊中央留白','Edge midpoint gap','辺の中央の余白'), junction: tr('交點裝飾','Junction mark','交点マーク'), junctionSize: tr('交點尺寸','Junction size','交点サイズ'), junctionWidth: tr('交點線寬','Junction width','交点線幅'), cornerShape: tr('角落裝飾','Corner mark','角のマーク'), cornerSize: tr('角落尺寸','Corner size','角のサイズ'), cornerInset: tr('角落內縮','Corner inset','角の内側余白'), dots: tr('顯示圓點','Show dots','ドットを表示'), dotSize: tr('圓點尺寸','Dot size','ドットサイズ'), dotSpacing: tr('圓點間距','Dot spacing','ドット間隔'), hatch: tr('顯示斜線','Show hatch','ハッチを表示'), hatchWidth: tr('斜線寬度','Hatch width','ハッチ幅'), hatchSpacing: tr('斜線間距','Hatch spacing','ハッチ間隔'), mode: tr('模式','Mode','モード'), innerRadius: tr('內半徑','Inner radius','内半径'), outerRadius: tr('外半徑','Outer radius','外半径'), randomLength: tr('長度隨機量','Random length','長さのランダム量'), end: tr('端點','End cap','線端'), transparent: tr('透明背景','Transparent background','透明背景'),
 };
-Object.assign(L,{pixelCount:tr('像素數量','Pixel count','ピクセル数'),colorCount:tr('色數上限','Color limit','色数上限'),paletteMode:tr('色盤模式','Palette mode','パレットモード'),outputSize:tr('輸出尺寸','Output size','出力サイズ')});
+Object.assign(L,{pixelCount:tr('像素數量','Pixel count','ピクセル数'),colorCount:tr('色數上限','Color limit','色数上限'),paletteMode:tr('色盤模式','Palette mode','パレットモード'),outputSize:tr('輸出尺寸','Output size','出力サイズ'),sizeMode:tr('尺寸模式','Size mode','サイズモード'),blockSize:tr('像素塊尺寸','Block size','ブロックサイズ'),resample:tr('縮放取樣','Resampling','リサンプリング'),colorDistance:tr('色彩比對','Color matching','色の比較'),dither:tr('抖色','Dither','ディザ'),ditherStrength:tr('抖色強度','Dither strength','ディザ強度'),brightness:tr('亮度','Brightness','明るさ'),contrast:tr('對比','Contrast','コントラスト'),saturation:tr('飽和度','Saturation','彩度'),alphaThreshold:tr('透明門檻','Alpha threshold','透明しきい値')});
 const O = {
   solid: tr('實線','Solid','実線'), dashed: tr('虛線','Dashed','破線'), dotted: tr('點線','Dotted','点線'), linear: tr('線性','Linear','線形'), radial: tr('放射','Radial','放射状'), exponential: tr('指數','Exponential','指数'), sine: tr('正弦','Sine','正弦'), grid: tr('方格','Grid','グリッド'), staggered: tr('交錯','Staggered','千鳥'), diagonal: tr('斜向','Diagonal','斜め'), circle: tr('圓形','Circle','円'), square: tr('方形','Square','四角'), diamond: tr('菱形','Diamond','ひし形'), triangle: tr('三角形','Triangle','三角形'), star: tr('星形','Star','星形'), full: tr('完整','Full','全体'), roundedRect: tr('圓角矩形','Rounded rectangle','角丸長方形'), hexagon: tr('六角形','Hexagon','六角形'), outward: tr('向外','Outward','外向き'), inward: tr('向內','Inward','内向き'), none: tr('無','None','なし'), center: tr('置中','Center','中央'), inner: tr('內側','Inner','内側'), outer: tr('外側','Outer','外側'), flat: tr('平切','Flat','フラット'), round: tr('圓弧','Round','ラウンド'), horizontal: tr('水平','Horizontal','水平'), vertical: tr('垂直','Vertical','垂直'), diagonal45: tr('對角','Diagonal','対角'), zigzag: tr('鋸齒','Zigzag','ジグザグ'), uniform: tr('均勻','Uniform','均一'), focus: tr('聚焦','Focus','フォーカス'), cycle: tr('循環','Cycle','サイクル'), arrow: tr('箭頭','Arrow','矢印'), slashes: tr('斜線組','Slashes','スラッシュ'), chevron: tr('折角','Chevron','シェブロン'), bracket: tr('括號','Bracket','ブラケット'), cross: tr('十字','Cross','十字'), fixedWidth: tr('固定寬度','Fixed width','幅を固定'), fixedAngle: tr('固定角度','Fixed angle','角度を固定'), random: tr('隨機','Random','ランダム'), pointed: tr('尖端','Pointed','先細り'), ring: tr('圓環','Ring','リング'), plus: tr('加號','Plus','プラス'), heart: tr('愛心','Heart','ハート'),
 };
-Object.assign(O,{auto:tr('自動量化','Auto quantize','自動量子化'),grayscale:tr('灰階','Grayscale','グレースケール'),retro:tr('復古綠四色','Retro green','レトログリーン'),custom:tr('自訂色盤','Custom palette','カスタムパレット'),canvas:tr('畫布尺寸','Canvas size','キャンバスサイズ')});
+Object.assign(O,{auto:tr('自動量化','Auto quantize','自動量子化'),grayscale:tr('灰階','Grayscale','グレースケール'),retro:tr('復古綠四色','Retro green','レトログリーン'),custom:tr('自訂色盤','Custom palette','カスタムパレット'),canvas:tr('畫布尺寸','Canvas size','キャンバスサイズ'),longEdge:tr('長邊','Long edge','長辺'),width:tr('寬度','Width','幅'),block:tr('像素塊尺寸','Pixel block size','ピクセルブロックサイズ'),average:tr('平均','Average','平均'),nearest:tr('最近鄰','Nearest','ニアレスト'),bilinear:tr('雙線性','Bilinear','バイリニア'),oklab:tr('OKLab','OKLab','OKLab'),rgb:tr('RGB','RGB','RGB'),bayer4:tr('Bayer 4×4','Bayer 4×4','Bayer 4×4'),'floyd-steinberg':tr('Floyd–Steinberg','Floyd–Steinberg','Floyd–Steinberg')});
 const control = (key, type, min, max, step = 1, values = null, labelKey = key) => ({
   key, label: L[labelKey] ?? tr(labelKey, labelKey, labelKey), type,
   ...(type === 'range' ? { min, max, step } : {}),
@@ -45,7 +46,7 @@ export const PATTERNS = [
   make('polygons','pattern',tr('多邊形格網','Polygon lattice','多角形グリッド'),tr('三角或六角圖樣，可填色並逐格編輯。','Editable triangular or hexagonal cells with optional fill.','三角形または六角形のセルを個別編集できます。'),{shape:'hexagon',cellSize:56,shapeScale:0.85,filled:false,strokeWidth:2,showGrid:true},[S('shape',['triangle','hexagon']),R('cellSize',12,512),R('shapeScale',0.1,1,0.01),T('filled'),R('strokeWidth',0.25,256,0.25),T('showGrid')]),
   make('contour','organic',tr('等高線','Contour field','等高線'),tr('由種子控制的流動地形與有機等高線。','Seeded flowing terrain and organic contour lines.','シードで変化する流れる地形と有機的な等高線。'),{peaks:3,terrainScale:1.75,sampling:72,levels:18,octaves:4,roughness:0.65,strokeWidth:1.5,depth:false,shadowRange:16,shadowOffset:10,shadowAngle:45,shadowColor:'#123e3b',shadowOpacity:0.35,shadowSide:'outer'},[R('peaks',1,32),R('terrainScale',0.25,8,0.05),R('sampling',72,256),R('levels',2,64),R('octaves',1,8),R('roughness',0,1,0.01),R('strokeWidth',0.25,256,0.25),T('depth'),S('shadowSide',['outer','inner']),R('shadowRange',0,128),R('shadowOffset',0,256),R('shadowAngle',-180,180),C('shadowColor'),R('shadowOpacity',0,1,0.01)]),
   make('lowpoly','pattern',tr('低多邊形','Low Poly','ローポリ'),tr('不規則三角面與色彩漸層，可使用圖片逐面取色。','Irregular triangular facets with gradients or sampled image colors.','不規則な三角面にグラデーションや画像の色を適用。'),{points:180,jitter:0.85,colorVariation:0.18,gradientAngle:0},[R('points',16,3000),R('jitter',0,1,0.01),R('colorVariation',0,1,0.01),R('gradientAngle',-180,180)]),
-  make('pixel','pattern',tr('像素圖樣','Pixel art','ピクセルアート'),tr('以來源圖片色彩或自訂色盤生成清晰像素格。','Build crisp pixel cells from an image source or a custom palette.','画像またはカスタムパレットから鮮明なピクセルセルを生成。'),{pixelCount:64,colorCount:16,paletteMode:'auto',outputSize:'canvas'},[R('pixelCount',4,512),R('colorCount',2,256),S('paletteMode',['auto','grayscale','retro','custom']),S('outputSize',['canvas','grid'])]),
+  make('pixel','pattern',tr('像素圖樣','Pixel art','ピクセルアート'),tr('以來源圖片色彩或自訂色盤生成清晰像素格。','Build crisp pixel cells from an image source or a custom palette.','画像またはカスタムパレットから鮮明なピクセルセルを生成。'),{sizeMode:'longEdge',blockSize:8,pixelCount:64,colorCount:16,resample:'average',colorDistance:'oklab',dither:'none',ditherStrength:0.6,brightness:0,contrast:0,saturation:0,alphaThreshold:0.5,paletteMode:'auto',outputSize:'canvas'},[S('sizeMode',['longEdge','width','block']),R('blockSize',1,256),R('pixelCount',4,512),R('colorCount',2,256),S('resample',['average','nearest','bilinear']),S('colorDistance',['oklab','rgb']),S('dither',['none','bayer4','floyd-steinberg']),R('ditherStrength',0,1,0.05),R('brightness',-1,1,0.05),R('contrast',-1,1,0.05),R('saturation',-1,1,0.05),R('alphaThreshold',0,1,0.01),S('paletteMode',['auto','grayscale','retro','custom']),S('outputSize',['canvas','grid'])]),
   make('symbols','pattern',tr('符號陣列','Symbol array','シンボル配列'),tr('多種符號與聚焦、循環排列。','Symbol glyphs in uniform, radial or focused layouts.','各種シンボルを均一、放射状、焦点配置。'),{shape:'arrow',arrangement:'uniform',size:20,spacing:72,strokeWidth:2,roundness:0.2,shorten:0.1,filled:false},[S('shape',['arrow','slashes','chevron','bracket','cross','star','circle','square','diamond','triangle','hexagon','ring','heart']),S('arrangement',['uniform','radial','focus','cycle']),R('size',4,512),R('spacing',16,512),R('strokeWidth',0.25,256,0.25),R('roundness',0,1,0.01),R('shorten',0,0.8,0.01),T('filled')]),
   make('nested','radial',tr('巢狀多邊形','Nested polygons','入れ子多角形'),tr('旋轉漸變的同心多邊形。','Nested polygons with twist and optional color gradient.','ねじれと色の変化を備えた多角形の重なり。'),{sides:6,radius:420,radiusStep:28,count:12,twist:0,strokeWidth:2,gradient:true},[R('sides',3,64),R('radius',20,2048),R('radiusStep',2,512),R('count',1,256),R('twist',-180,180),R('strokeWidth',0.25,256,0.25),T('gradient')]),
   make('globe','radial',tr('經緯球體','Globe grid','地球グリッド'),tr('橢圓外框與經緯線。','An elliptical globe outline with longitude and latitude lines.','楕円の外枠と経線、緯線。'),{radiusX:360,radiusY:280,longitudes:12,latitudes:8,strokeWidth:2,tilt:0},[R('radiusX',40,2048),R('radiusY',40,2048),R('longitudes',2,128),R('latitudes',1,128),R('strokeWidth',0.25,256,0.25),R('tilt',-90,90)]),
@@ -56,7 +57,7 @@ export const PATTERNS = [
 export const SHAPE_PATTERNS = ['halftone','dots','polygons','symbols'];
 
 const patternById = new Map(PATTERNS.map(p => [p.id, p]));
-const PATTERN_SETTING_KEYS = ['opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask'];
+const PATTERN_SETTING_KEYS = ['opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask','imageSource'];
 const patternSettingKeySet = new Set(PATTERN_SETTING_KEYS);
 const isObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = v => JSON.parse(JSON.stringify(v));
@@ -86,7 +87,7 @@ export function createLayer(type, id = `layer-${Date.now().toString(36)}-${(++la
   const p = patternById.get(type);
   assert(p, `Unknown pattern: ${type}`);
   assert(safeId(id), 'Invalid layer id');
-  return { id, type, visible: true, opacity: 1, color: '#e9e6df', secondary: '#77736d', rotation: 0, scale: 1, offsetX: 0, offsetY: 0, params: clone(p.defaults), pixelPalette: [], hiddenCells: [], customMotif: null, motifTint: false, cellLinks: [], linkWidth: 2, mask: null, patternSettings: {} };
+  return { id, type, visible: true, opacity: 1, color: '#e9e6df', secondary: '#77736d', rotation: 0, scale: 1, offsetX: 0, offsetY: 0, params: clone(p.defaults), pixelPalette: [], hiddenCells: [], customMotif: null, motifTint: false, cellLinks: [], linkWidth: 2, mask: null, imageSource: 'all', patternSettings: {} };
 }
 
 function clonePatternSettings(value, activeType) {
@@ -96,14 +97,14 @@ function clonePatternSettings(value, activeType) {
     assert(patternById.has(type) && type !== activeType, 'Invalid cached pattern type');
     assert(isObject(snapshot), 'Invalid pattern snapshot');
     for (const key of Object.keys(snapshot)) assert(patternSettingKeySet.has(key), `Unknown pattern snapshot field: ${key}`);
-    for (const key of PATTERN_SETTING_KEYS) if (key !== 'pixelPalette') assert(Object.hasOwn(snapshot, key), `Missing pattern snapshot field: ${key}`);
-    settings[type] = { ...clone(snapshot), pixelPalette: Object.hasOwn(snapshot, 'pixelPalette') ? clone(snapshot.pixelPalette) : [] };
+    for (const key of PATTERN_SETTING_KEYS) if (key !== 'pixelPalette' && key !== 'imageSource') assert(Object.hasOwn(snapshot, key), `Missing pattern snapshot field: ${key}`);
+    settings[type] = { ...clone(snapshot), imageSource: Object.hasOwn(snapshot, 'imageSource') ? clone(snapshot.imageSource) : 'auto', pixelPalette: Object.hasOwn(snapshot, 'pixelPalette') ? clone(snapshot.pixelPalette) : [] };
   }
   return settings;
 }
 
 function snapshotPatternSettings(layer) {
-  return Object.fromEntries(PATTERN_SETTING_KEYS.map(key => [key, clone(key === 'pixelPalette' && layer[key] === undefined ? [] : layer[key])]));
+  return Object.fromEntries(PATTERN_SETTING_KEYS.map(key => [key, clone(key === 'pixelPalette' && layer[key] === undefined ? [] : key === 'imageSource' && layer[key] === undefined ? 'auto' : layer[key])]));
 }
 
 function assertPatternLayer(layer) {
@@ -122,12 +123,13 @@ export function switchLayerPattern(layer, type) {
   next.visible = layer.visible;
   if (Object.hasOwn(patternSettings, type)) {
     const restored = patternSettings[type];
-    for (const key of PATTERN_SETTING_KEYS) next[key] = key === 'pixelPalette' && restored[key] === undefined ? [] : restored[key];
+    for (const key of PATTERN_SETTING_KEYS) next[key] = key === 'pixelPalette' && restored[key] === undefined ? [] : key === 'imageSource' && restored[key] === undefined ? 'auto' : restored[key];
     delete patternSettings[type];
   } else {
     next.opacity = layer.opacity;
     next.color = layer.color;
     next.secondary = layer.secondary;
+    next.imageSource = layer.imageSource ?? 'auto';
   }
   patternSettings[layer.type] = snapshotPatternSettings(layer);
   next.patternSettings = patternSettings;
@@ -140,6 +142,7 @@ export function resetLayerPattern(layer) {
   next.visible = layer.visible;
   next.color = layer.color;
   next.secondary = layer.secondary;
+  next.imageSource = layer.imageSource ?? 'auto';
   next.patternSettings = clonePatternSettings(layer.patternSettings ?? {}, layer.type);
   return next;
 }
@@ -224,7 +227,7 @@ function normalizeImageMaskLayer(raw) {
   for (const key of ['offsetX','offsetY']) assert(typeof raw[key] === 'number' && Number.isFinite(raw[key]) && raw[key] >= -32768 && raw[key] <= 32768, `Invalid image mask ${key}`);
   assert(typeof raw.flipX === 'boolean' && typeof raw.flipY === 'boolean', 'Invalid image mask flip flags');
   const mode=raw.mode??'mask',colorMap=normalizeColorMap(raw.colorMap);
-  assert(mode==='mask'||mode==='color','Invalid image mode');
+  assert(mode==='mask'||mode==='color'||mode==='image','Invalid image mode');
   assert(mode!=='color'||colorMap,'Image color mode requires a color map');
   return { mode, colorMap, id:raw.id, type:'imageMask', name, visible:raw.visible, image:validateImageMaskDataImage(raw.image), imageWidth:raw.imageWidth, imageHeight:raw.imageHeight, threshold:raw.threshold, invert:raw.invert, fit:raw.fit, scale:raw.scale, rotation:raw.rotation, offsetX:raw.offsetX, offsetY:raw.offsetY, flipX:raw.flipX, flipY:raw.flipY };
 }
@@ -269,6 +272,10 @@ export function validateDataImage(value, label) {
 function normalizeParams(type, value) {
   assert(isObject(value), 'Layer params must be an object');
   const p = patternById.get(type), out = clone(p.defaults), allowed = new Set(p.controls.map(c => c.key));
+  if (type === 'pixel') {
+    if (!Object.hasOwn(value, 'resample')) out.resample = 'bilinear';
+    if (!Object.hasOwn(value, 'colorDistance')) out.colorDistance = 'rgb';
+  }
   for (const key of Object.keys(value)) assert(allowed.has(key), `Unknown ${type} parameter: ${key}`);
   for (const c of p.controls) {
     if (!(c.key in value)) continue;
@@ -277,7 +284,7 @@ function normalizeParams(type, value) {
     if (c.type === 'range') {
       assert(typeof v === 'number' && Number.isFinite(v), `Invalid parameter ${c.key}`);
       const bounded = Math.min(c.max, Math.max(c.min, v));
-      out[c.key] = type === 'pixel' && ['pixelCount','colorCount'].includes(c.key) ? Math.round(bounded) : bounded;
+      out[c.key] = type === 'pixel' && ['blockSize','pixelCount','colorCount'].includes(c.key) ? Math.round(bounded) : bounded;
     } else if (c.type === 'color') {
       assert(hex(v), `Invalid parameter ${c.key}`); out[c.key] = v;
     } else if (c.type === 'toggle') {
@@ -299,8 +306,11 @@ function normalizePatternState(type, raw, width, height) {
   assert(typeof linkWidth === 'number' && Number.isFinite(linkWidth), 'Invalid linkWidth');
   const pixelPalette = raw.pixelPalette === undefined ? [] : raw.pixelPalette;
   assert(Array.isArray(pixelPalette) && pixelPalette.length <= 256 && pixelPalette.every(color => hex(color)), 'Invalid pixel palette');
+  const imageSource = Object.hasOwn(raw, 'imageSource') ? raw.imageSource : 'auto';
+  assert(typeof imageSource === 'string' && (['auto','all','none'].includes(imageSource) || safeId(imageSource)), 'Invalid image source');
   return {
     opacity: Math.min(1, Math.max(0, raw.opacity)),
+    imageSource,
     color: raw.color,
     secondary: raw.secondary,
     rotation: raw.rotation % 360,
@@ -320,7 +330,7 @@ function normalizePatternState(type, raw, width, height) {
 function normalizePatternSnapshot(type, raw, width, height) {
   assert(isObject(raw), 'Invalid pattern snapshot');
   for (const key of Object.keys(raw)) assert(patternSettingKeySet.has(key), `Unknown pattern snapshot field: ${key}`);
-  for (const key of PATTERN_SETTING_KEYS) if (key !== 'pixelPalette') assert(Object.hasOwn(raw, key), `Missing pattern snapshot field: ${key}`);
+  for (const key of PATTERN_SETTING_KEYS) if (key !== 'pixelPalette' && key !== 'imageSource') assert(Object.hasOwn(raw, key), `Missing pattern snapshot field: ${key}`);
   return normalizePatternState(type, { ...raw, pixelPalette: Object.hasOwn(raw, 'pixelPalette') ? raw.pixelPalette : [] }, width, height);
 }
 function normalizePatternSettings(activeType, value, width, height) {
@@ -377,7 +387,11 @@ export function normalizeDocument(input) {
   };
 }
 
-const pixelArtEngine = createPixelArtEngine({ normalizeDocument, isImageMaskLayer, imageMaskGeometry, createImageColorSampler });
+const imageSourceEngine = createImageSources({ isImageMaskLayer, imageMaskGeometry, createImageColorSampler });
+export const resolveColorSources = (doc, layer) => imageSourceEngine.resolveColorSources(doc, layer);
+export const hasColorSource = (doc, layer) => imageSourceEngine.hasColorSource(doc, layer);
+export const createCompositeColorSampler = (doc, layer, options) => imageSourceEngine.createCompositeColorSampler(doc, layer, options);
+const pixelArtEngine = createPixelArtEngine({ normalizeDocument, isImageMaskLayer, imageMaskGeometry, createImageColorSampler, resolveColorSources, hasColorSource });
 export const getPixelGrid = (doc, layer) => pixelArtEngine.getPixelGrid(doc, layer);
 export const getPixelData = (doc, layer) => pixelArtEngine.getPixelData(doc, layer);
 
@@ -676,9 +690,24 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
   const doc=normalizeDocument(document);assert(repeat===1||repeat===3,'repeat must be 1 or 3');
   const W=doc.width,H=doc.height,fullW=W*repeat,fullH=H*repeat,parts=[];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${fullW}" height="${fullH}" viewBox="0 0 ${fullW} ${fullH}"${preview?' data-preview="true"':''}>`);
-  const visible=doc.layers.filter(layer=>!isImageMaskLayer(layer)&&layer.visible&&layer.opacity>0),imageMasks=doc.layers.filter(layer=>isImageMaskLayer(layer)&&layer.visible&&layer.mode!=='color'),colorLayer=doc.layers.findLast(layer=>isImageMaskLayer(layer)&&layer.visible&&layer.mode==='color'),colorGeometry=colorLayer?imageMaskGeometry(colorLayer,doc):null,sampleColor=colorLayer?createImageColorSampler(colorLayer,colorGeometry):null;
+  const visible=doc.layers.filter(layer=>!isImageMaskLayer(layer)&&layer.visible&&layer.opacity>0),imageMasks=doc.layers.filter(layer=>isImageMaskLayer(layer)&&layer.visible&&layer.mode==='mask'),hasRawImages=doc.layers.some(layer=>isImageMaskLayer(layer)&&layer.visible&&layer.mode==='image');
   parts.push('<defs><clipPath id="tile-base"><rect x="0" y="0" width="'+W+'" height="'+H+'"/></clipPath>');
-  if(colorLayer&&visible.some(layer=>!['lowpoly','pixel'].includes(layer.type)))parts.push(`<g id="image-color-source"><image href="${esc(colorLayer.image)}" x="${fmt(-colorGeometry.width/2)}" y="${fmt(-colorGeometry.height/2)}" width="${fmt(colorGeometry.width)}" height="${fmt(colorGeometry.height)}" preserveAspectRatio="none" transform="${esc(colorGeometry.transform)}"/></g>`);
+  const imageRefs=new Map(),imageRefFor=layer=>{
+    if(imageRefs.has(layer.id))return imageRefs.get(layer.id);
+    const geometry=imageMaskGeometry(layer,doc),id=`image-source-${esc(layer.id)}`;
+    parts.push(`<g id="${id}"><image href="${esc(layer.image)}" x="${fmt(-geometry.width/2)}" y="${fmt(-geometry.height/2)}" width="${fmt(geometry.width)}" height="${fmt(geometry.height)}" preserveAspectRatio="none" transform="${esc(geometry.transform)}"/></g>`);
+    imageRefs.set(layer.id,id);return id;
+  };
+  const colors=new Map();
+  for(const layer of visible){
+    const colorSources=resolveColorSources(doc,layer),hasSource=hasColorSource(doc,layer),sampleColor=createCompositeColorSampler(doc,layer),sourceGroupId=`image-color-source-${esc(layer.id)}`;
+    if(hasSource&&!['lowpoly','pixel'].includes(layer.type)){
+      const references=colorSources.map(source=>`<use href="#${imageRefFor(source)}"/>`).join('');
+      parts.push(`<g id="${sourceGroupId}">${references}</g>`);
+    }
+    colors.set(layer.id,{sampleColor,hasSource,sourceGroupId});
+  }
+  for(const layer of doc.layers)if(isImageMaskLayer(layer)&&layer.visible&&layer.mode==='image')imageRefFor(layer);
   const imageMaskIds=[];
   for(const layer of imageMasks){
     const geometry=imageMaskGeometry(layer,doc),filterId=`image-mask-filter-${esc(layer.id)}`,maskId=`image-mask-${esc(layer.id)}`,cutoff=Math.min(255,Math.floor(layer.threshold*256/255)),table=Array.from({length:256},(_,index)=>((layer.invert?index>cutoff:index<=cutoff)?'1':'0')).join(' ');
@@ -693,16 +722,16 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
   }
   const sources=new Map(),copyRanges=new Map(),projectedColors=new Set();
   for(const original of visible){
-    const layer=fitSeamlessMotif(original,doc);
+    const layer=fitSeamlessMotif(original,doc),color=colors.get(layer.id);
     let fillPaint=null;
-    if(colorLayer&&layer.type==='contour'&&layer.params.depth){
+    if(color.hasSource&&layer.type==='contour'&&layer.params.depth){
       const paintId=`image-color-paint-${layer.id}`,rotation=doc.seamless?0:layer.rotation,scale=doc.seamless?1:layer.scale;
       const ox=doc.seamless?wrappedOffset(layer.offsetX,W):layer.offsetX,oy=doc.seamless?wrappedOffset(layer.offsetY,H):layer.offsetY;
       const inverse=`translate(${W/2} ${H/2}) scale(${transformNumber(1/scale)}) rotate(${fmt(-rotation)}) translate(${-W/2} ${-H/2}) translate(${fmt(-ox)} ${fmt(-oy)})`;
-      parts.push(`<pattern id="${paintId}" x="0" y="0" width="${W}" height="${H}" patternUnits="userSpaceOnUse" patternContentUnits="userSpaceOnUse" patternTransform="${inverse}"><use href="#image-color-source"/></pattern>`);
+      parts.push(`<pattern id="${paintId}" x="0" y="0" width="${W}" height="${H}" patternUnits="userSpaceOnUse" patternContentUnits="userSpaceOnUse" patternTransform="${inverse}"><use href="#${color.sourceGroupId}"/></pattern>`);
       fillPaint=`url(#${paintId})`;
     }
-    const metrics={},effects={sampleColor,fillPaint};if(layer.type==='pixel')effects.pixelData=pixelArtEngine.getPixelDataFromNormalized(doc,layer);let content=renderPattern(layer,doc,preview,metrics,effects);if(!content)continue;
+    const metrics={},effects={sampleColor:color.sampleColor,fillPaint};if(layer.type==='pixel')effects.pixelData=pixelArtEngine.getPixelDataFromNormalized(doc,layer);let content=renderPattern(layer,doc,preview,metrics,effects);if(!content)continue;
     content=content.replace(/<defs>([\s\S]*?)<\/defs>/g,(_,definitions)=>{parts.push(definitions);return '';});
     content+=renderCellLinks(layer,doc,metrics);
     const renderedLayer=metrics.world?{...layer,rotation:0,scale:1}:layer;
@@ -717,7 +746,7 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
       const extent=Math.hypot(cx,cy)*Math.max(1,layer.scale);
       parts.push(`<mask id="mask-${esc(layer.id)}" maskUnits="userSpaceOnUse" x="${fmt(cx-extent)}" y="${fmt(cy-extent)}" width="${fmt(2*extent)}" height="${fmt(2*extent)}" mask-type="alpha"><image href="${esc(layer.mask)}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="none"${maskTransform}/></mask>`);
     }
-    if(colorLayer&&!['lowpoly','pixel'].includes(layer.type)&&!fillPaint){
+    if(color.hasSource&&!['lowpoly','pixel'].includes(layer.type)&&!fillPaint){
       const geometry=content.replace(/ data-(?:cell|layer|cx|cy|hidden)="[^"]*"/g,''),masked=layer.mask?`<g mask="url(#mask-${esc(layer.id)})">${geometry}</g>`:geometry,copies=[];
       for(let oy=range.y0;oy<=range.y1;oy++)for(let ox=range.x0;ox<=range.x1;ox++)copies.push(`<g transform="translate(${fmt(ox*W)} ${fmt(oy*H)})"><g transform="${transform}">${masked}</g></g>`);
       parts.push(`<mask id="image-color-shape-${layer.id}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}" mask-type="alpha">${copies.join('')}</mask>`);
@@ -732,12 +761,21 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
   if(!doc.transparent)parts.push(`<rect width="${fullW}" height="${fullH}" fill="${doc.background}"/>`);
   for(let tileY=0;tileY<repeat;tileY++)for(let tileX=0;tileX<repeat;tileX++){
     const tx=tileX*W,ty=tileY*H;parts.push(`<g clip-path="url(#tile-base)" transform="translate(${tx} ${ty})">`);
-    if(imageMaskIds.length)parts.push('<g mask="url(#all-image-masks)">');
-    for(const layer of visible){const source=sources.get(layer.id),range=copyRanges.get(layer.id);if(!source||!range)continue;
+    const oneMaskForPatterns=imageMaskIds.length>0&&!hasRawImages;
+    if(oneMaskForPatterns)parts.push('<g mask="url(#all-image-masks)">');
+    for(const layer of doc.layers){
+      if(isImageMaskLayer(layer)){
+        if(layer.visible&&layer.mode==='image')parts.push(`<use href="#${imageRefs.get(layer.id)}"/>`);
+        continue;
+      }
+      if(!layer.visible||layer.opacity<=0)continue;
+      const source=sources.get(layer.id),range=copyRanges.get(layer.id);if(!source||!range)continue;
+      const wrapPatternMask=!oneMaskForPatterns&&imageMaskIds.length>0;
+      if(wrapPatternMask)parts.push('<g mask="url(#all-image-masks)">');
       parts.push(`<g opacity="${fmt(layer.opacity)}">`);
       if(projectedColors.has(layer.id)){
-        parts.push(`<use href="#image-color-source" mask="url(#image-color-shape-${layer.id})"/>`);
-        if(!preview){parts.push('</g>');continue;}
+        parts.push(`<use href="#${colors.get(layer.id).sourceGroupId}" mask="url(#image-color-shape-${layer.id})"/>`);
+        if(!preview){parts.push('</g>');if(wrapPatternMask)parts.push('</g>');continue;}
         parts.push('<g opacity="0">');
       }
       for(let oy=range.y0;oy<=range.y1;oy++)for(let ox=range.x0;ox<=range.x1;ox++){
@@ -747,8 +785,9 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
       }
       if(projectedColors.has(layer.id))parts.push('</g>');
       parts.push('</g>');
+      if(wrapPatternMask)parts.push('</g>');
     }
-    if(imageMaskIds.length)parts.push('</g>');
+    if(oneMaskForPatterns)parts.push('</g>');
     parts.push('</g>');
   }
   parts.push('</svg>');return parts.join('');

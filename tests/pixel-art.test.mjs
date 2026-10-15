@@ -28,6 +28,12 @@ function pixelDocument(width = 128, height = 128, layer = createLayer('pixel', '
   return doc;
 }
 
+function solidData(width, height, rgba) {
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let offset = 0; offset < data.length; offset += 4) data.set(rgba, offset);
+  return data;
+}
+
 function quadrantImage() {
   const data = new Uint8ClampedArray(4 * 4 * 4);
   const colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]];
@@ -59,12 +65,26 @@ function colorGrid() {
 
 test('Pixel defaults, grid limits, aspect ratio, and color count limits are stable', () => {
   const layer = createLayer('pixel', 'pixel-limits');
-  assert.deepEqual(layer.params, { pixelCount: 64, colorCount: 16, paletteMode: 'auto', outputSize: 'canvas' });
+  assert.deepEqual(layer.params, {
+    sizeMode: 'longEdge', blockSize: 8, pixelCount: 64, colorCount: 16,
+    resample: 'average', colorDistance: 'oklab', dither: 'none', ditherStrength: 0.6,
+    brightness: 0, contrast: 0, saturation: 0, alphaThreshold: 0.5,
+    paletteMode: 'auto', outputSize: 'canvas',
+  });
   assert.deepEqual(layer.pixelPalette, []);
 
   const doc = pixelDocument(512, 256, layer);
   layer.params.pixelCount = 64;
   assert.deepEqual(getPixelGrid(doc, layer), { width: 64, height: 32 });
+  const portraitLayer = createLayer('pixel', 'pixel-width-mode');
+  portraitLayer.params.sizeMode = 'width';
+  portraitLayer.params.pixelCount = 140;
+  assert.deepEqual(getPixelGrid(pixelDocument(640, 935, portraitLayer), portraitLayer), { width: 140, height: 205 });
+  portraitLayer.params.sizeMode = 'block';
+  portraitLayer.params.blockSize = 8;
+  assert.deepEqual(getPixelGrid(pixelDocument(640, 935, portraitLayer), portraitLayer), { width: 80, height: 117 });
+  portraitLayer.params.blockSize = 1;
+  assert.deepEqual(getPixelGrid(pixelDocument(4096, 2048, portraitLayer), portraitLayer), { width: 1024, height: 512 });
   layer.params.pixelCount = 512;
   assert.deepEqual(getPixelGrid(doc, layer), { width: 512, height: 256 });
   layer.params.pixelCount = 3;
@@ -132,6 +152,100 @@ test('alpha below 128 becomes transparent and alpha 128 becomes opaque', () => {
   assert.equal(result.pixels[7], 255);
 });
 
+test('sources composite bottom-to-top and zero-alpha or missing sources remain transparent', () => {
+  const layer = createLayer('pixel', 'pixel-composite');
+  layer.params.pixelCount = 4;
+  layer.params.colorCount = 2;
+  layer.params.resample = 'nearest';
+  layer.params.colorDistance = 'rgb';
+  layer.params.paletteMode = 'custom';
+  layer.params.alphaThreshold = 0;
+  layer.pixelPalette = ['#80007f', '#7f0080'];
+  const doc = pixelDocument(4, 4, layer);
+  doc.layers.push(imageLayer('composite-under', 4, 4, solidData(4, 4, [0, 0, 255, 255])));
+  doc.layers.push(imageLayer('composite-top', 4, 4, solidData(4, 4, [255, 0, 0, 128])));
+  const composite = getPixelData(doc, layer);
+  assert.equal(composite.palette[composite.indices[0]], '#80007f');
+
+  const transparentLayer = createLayer('pixel', 'pixel-transparent-zero-threshold');
+  transparentLayer.params.pixelCount = 4;
+  transparentLayer.params.paletteMode = 'custom';
+  transparentLayer.params.alphaThreshold = 0;
+  transparentLayer.pixelPalette = ['#ffffff'];
+  const transparentDoc = pixelDocument(4, 4, transparentLayer);
+  transparentDoc.layers.push(imageLayer('fully-transparent', 4, 4, solidData(4, 4, [255, 255, 255, 0])));
+  const transparent = getPixelData(transparentDoc, transparentLayer);
+  assert.ok([...transparent.indices].every(index => index === -1));
+  assert.ok([...transparent.pixels].every((value, index) => index % 4 !== 3 || value === 0));
+
+  transparentLayer.imageSource = 'missing-source';
+  const missing = getPixelData(transparentDoc, transparentLayer);
+  assert.ok([...missing.indices].every(index => index === -1), 'a selected but unavailable source must not fall back to the demo gradient');
+});
+
+test('Bayer and Floyd-Steinberg dithering create deterministic palette patterns', () => {
+  const layer = createLayer('pixel', 'pixel-dither');
+  layer.params.sizeMode = 'width';
+  layer.params.pixelCount = 16;
+  layer.params.colorCount = 2;
+  layer.params.resample = 'nearest';
+  layer.params.paletteMode = 'custom';
+  layer.params.colorDistance = 'rgb';
+  layer.pixelPalette = ['#000000', '#ffffff'];
+  const doc = pixelDocument(16, 16, layer);
+  doc.layers.push(imageLayer('gray-source', 16, 16, solidData(16, 16, [128, 128, 128, 255])));
+
+  const plain = getPixelData(doc, layer);
+  assert.equal(new Set(plain.indices).size, 1);
+  layer.params.dither = 'bayer4';
+  const ordered = getPixelData(doc, layer);
+  assert.equal(new Set(ordered.indices).size, 2);
+  assert.deepEqual(getPixelData(doc, layer).indices, ordered.indices);
+  layer.params.dither = 'floyd-steinberg';
+  const diffused = getPixelData(doc, layer);
+  assert.equal(new Set(diffused.indices).size, 2);
+  assert.deepEqual(getPixelData(doc, layer).indices, diffused.indices);
+});
+
+test('brightness and saturation adjust colors before palette matching', () => {
+  const layer = createLayer('pixel', 'pixel-adjust');
+  layer.params.pixelCount = 4;
+  layer.params.colorCount = 2;
+  layer.params.resample = 'nearest';
+  layer.params.colorDistance = 'rgb';
+  layer.params.paletteMode = 'custom';
+  layer.pixelPalette = ['#000000', '#ffffff'];
+  const doc = pixelDocument(4, 4, layer);
+  doc.layers.push(imageLayer('black-source', 4, 4, solidData(4, 4, [0, 0, 0, 255])));
+  assert.equal(rowColors(getPixelData(doc, layer))[0], '#000000');
+  layer.params.brightness = 0.6;
+  assert.equal(rowColors(getPixelData(doc, layer))[0], '#ffffff');
+
+  layer.pixelPalette = ['#202020', '#ff0000'];
+  const mutedDoc = pixelDocument(4, 4, layer);
+  mutedDoc.layers.push(imageLayer('muted-red-source', 4, 4, solidData(4, 4, [128, 64, 64, 255])));
+  layer.params.brightness = 0;
+  layer.params.saturation = 0;
+  assert.equal(rowColors(getPixelData(mutedDoc, layer))[0], '#202020');
+  layer.params.saturation = 1;
+  assert.equal(rowColors(getPixelData(mutedDoc, layer))[0], '#ff0000');
+});
+
+test('legacy pixel settings retain bilinear resampling and RGB matching defaults', () => {
+  const layer = createLayer('pixel', 'pixel-legacy-settings');
+  layer.params = { pixelCount: 8, colorCount: 4, paletteMode: 'auto', outputSize: 'canvas' };
+  const doc = pixelDocument(128, 128, layer);
+  doc.layers.push(imageLayer('legacy-settings-source', 16, 16, colorGrid()));
+  const normalized = normalizeDocument(doc);
+  assert.equal(normalized.layers[0].params.resample, 'bilinear');
+  assert.equal(normalized.layers[0].params.colorDistance, 'rgb');
+
+  const legacy = getPixelData(doc, layer);
+  layer.params.resample = 'bilinear';
+  layer.params.colorDistance = 'rgb';
+  assert.deepEqual(getPixelData(doc, layer), legacy);
+});
+
 test('source sampling respects contain, cover, rotation, flip, and offset transforms', () => {
   const layer = createLayer('pixel', 'pixel-transform');
   layer.params.pixelCount = 4;
@@ -183,6 +297,9 @@ test('pixelPalette reset, pattern history, legacy normalization, and user preset
   layer.pixelPalette = ['#123456', '#abcdef'];
   const doc = pixelDocument(128, 128, layer);
   const preset = createUserPreset(doc, layer.id, { id: 'pixel-preset', name: 'Pixel palette' });
+  const oldPreset = structuredClone(preset);
+  delete oldPreset.layer.imageSource;
+  assert.equal(readPreset(oldPreset).layer.imageSource, 'auto', 'older presets may omit imageSource');
   assert.deepEqual(readPreset(preset).layer.pixelPalette, ['#123456', '#abcdef']);
 
   const target = pixelDocument(128, 128, createLayer('dots', 'preset-target'));
@@ -226,4 +343,22 @@ test('pixel results are copied on cache reads, and 1024-wide color maps validate
 
   const large = encodeColorMap({ width: 1024, height: 1, data: new Uint8ClampedArray(1024 * 4) });
   assert.deepEqual(normalizeColorMap(large), large);
+});
+test('area averaging keeps subpixel stripes and ignores colors behind zero alpha', () => {
+  const layer=createLayer('pixel','average-stripes');
+  Object.assign(layer.params,{pixelCount:4,colorCount:3,paletteMode:'custom',colorDistance:'rgb',resample:'average'});
+  layer.pixelPalette=['#000000','#808080','#ffffff'];
+  const data=new Uint8ClampedArray(8*8*4);
+  for(let i=0;i<64;i++){const value=i%2?0:255;data.set([value,value,value,255],i*4);}
+  const doc=pixelDocument(128,128,layer);
+  doc.layers.push(imageLayer('stripes',8,8,data));
+  assert.ok(rowColors(getPixelData(doc,layer)).every(color=>color==='#808080'),'averaging retains both colors inside each cell');
+  layer.params.resample='nearest';
+  assert.ok(rowColors(getPixelData(doc,layer)).every(color=>color==='#000000'),'nearest samples only the center source pixel');
+  for(let i=0;i<64;i++)data.set(i%2?[0,0,255,0]:[255,0,0,255],i*4);
+  doc.layers[1]=imageLayer('stripes',8,8,data);
+  layer.params.resample='average';layer.pixelPalette=['#ff0000','#800080'];
+  assert.ok(rowColors(getPixelData(doc,layer)).every(color=>color==='#ff0000'),'transparent blue does not contaminate averaged red');
+  layer.params.alphaThreshold=0.51;
+  assert.ok([...getPixelData(doc,layer).indices].every(index=>index===-1),'half-covered cells respect the alpha threshold');
 });

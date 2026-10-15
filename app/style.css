@@ -132,3 +132,5 @@ body.file-dropping:after{content:attr(data-drop-hint);position:fixed;inset:12px;
 .pixel-output-switch .button{min-width:0;white-space:normal;justify-content:center;padding:9px 6px;font-size:12px}
 .pixel-readout{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 0;font-size:13px}
 .pixel-readout strong{white-space:nowrap}
+
+.image-source-field .field-title{display:block;margin-bottom:7px}.image-source-field select{min-width:0;text-overflow:ellipsis}.image-source-field .image-color-launch{width:100%;margin-top:8px}

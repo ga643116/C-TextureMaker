@@ -29,6 +29,8 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ![Seamless export animation](docs/media/seamless-export.gif)
 
+> **In development: 1.5.0** (not released) adds Pixel art with 2–256 colors, editable palettes, average/nearest sampling, dithering and native pixel-size export. Patterns can use independent image sources or share an image and stack in layer order. The download above remains the published 1.4.1.
+
 ## Features
 
 - 16 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, and radial beams.

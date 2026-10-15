@@ -74,3 +74,14 @@ Canvas size keeps the large output; Actual pixel grid exports each cell as 1 px 
 Pixel（1.5.0 テスト版）
 Pixel を選び、色レイヤーとして画像を読み込んでから Pixel を再選択します。スライダーで長辺を 4–512 セルに調整し、短辺はキャンバスの比率に合わせます。色数は 2–256 色。画像から抽出・グレースケール・レトログリーンを選べ、色をクリックするとカスタムパレットになります。元画像の変形は画像レイヤーで調整します。
 キャンバスサイズは大きな出力を維持し、実ピクセルサイズは各セルを 1 px（例：64 × 32）で SVG・PNG に出力します。プロジェクトのキャンバスは変更しません。PNG はグリッド解像度で表示レイヤーを合成してから最近傍法で拡大します。色数の上限は Pixel レイヤーのみで、背景や他のレイヤーにより出力色数が増える場合があります。透明度は二値で輪郭を鮮明に保ちます。
+
+圖片來源與 Pixel / Image sources and Pixel / 画像ソースと Pixel
+-------------------------------------------------------------
+各圖樣的「圖片來源」可選單一圖片、合成所有圖片色彩圖層，或不使用圖片。按「新增圖樣效果」再選另一圖樣，可共用來源並上下疊加；不透明上層會遮住下層。圖片的「顯示原圖」模式會直接顯示原圖。舊專案保留最上方圖片模式，可自行改選來源。
+Pixel 可依長邊格數、寬度或像素塊尺寸調整密度，並選平均／最近鄰取樣、2–256 色、抖色及亮度／對比／飽和度。「實際像素格尺寸」將每格輸出為1 px；PNG會合成所有可見圖層。與其他工具比較時，請先對齊實際輸出寬高及色數。
+
+Each pattern's Image source can select one image, composite all color layers, or use no image. Add a pattern effect, then choose another pattern to share a source and stack results. Opaque upper layers cover lower ones. Original image mode displays the source itself. Old projects retain the topmost-image mode until you change it.
+Pixel density can follow long-edge count, width, or block size. Choose average/nearest sampling, 2–256 colors, dithering, and brightness/contrast/saturation. Actual pixel grid exports one cell as 1 px; PNG composites all visible layers. Match output width, height and color count when comparing tools.
+
+各パターンの「画像ソース」で1枚の画像、すべての色レイヤーの合成、画像なしを選べます。「パターン効果を追加」して別のパターンを選ぶと、同じ画像を参照して重ねられます。上の不透明部分は下を覆います。「元画像を表示」は画像自体を表示します。旧プロジェクトは変更するまで最上位画像の方式を保持します。
+Pixelの密度は長辺のセル数、幅、ブロックサイズで調整できます。平均／最近傍サンプリング、2〜256色、ディザリング、明るさ／コントラスト／彩度を設定できます。「実ピクセルサイズ」は1セルを1 pxで出力し、PNGは表示中の全レイヤーを合成します。他のツールと比べる際は出力の幅・高さ・色数を揃えてください。

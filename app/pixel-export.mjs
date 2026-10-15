@@ -9,5 +9,9 @@ export function pixelExportSize(doc,layer,format,multiplier=1){
  return {width:base.width*scale,height:base.height*scale};
 }
 export function resizeSVG(svg,width,height){
- return svg.replace(/<svg\b[^>]*>/,tag=>tag.replace(/\bwidth="[^"]*"/,`width="${width}"`).replace(/\bheight="[^"]*"/,`height="${height}"`));
+ return svg.replace(/<svg\b[^>]*>/,tag=>{
+  const sized=tag.replace(/\bwidth="[^"]*"/,`width="${width}"`).replace(/\bheight="[^"]*"/,`height="${height}"`);
+  // Grid dimensions round to whole pixels: fill them without SVG letterboxing.
+  return /\bpreserveAspectRatio=/.test(sized)?sized.replace(/\bpreserveAspectRatio="[^"]*"/,'preserveAspectRatio="none"'):sized.replace(/>$/,' preserveAspectRatio="none">');
+ });
 }

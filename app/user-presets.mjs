@@ -86,11 +86,14 @@ export function createUserPreset(doc, layerId, { id, name } = {}) {
   const document = normalizeDocument(clone(doc));
   const layer = document.layers.find(candidate => candidate.id === layerId);
   assert(layer, 'Preset layer was not found');
+  const presetLayer = clone(layer);
+  delete presetLayer.imageSource;
+  for (const snapshot of Object.values(presetLayer.patternSettings ?? {})) delete snapshot.imageSource;
   return {
     id,
     name: cleanName,
     version: 2,
-    layer: clone(layer),
+    layer: clone(presetLayer),
     seed: document.seed,
     width: document.width,
     height: document.height,
@@ -138,6 +141,7 @@ export function applyUserPreset(doc, selectedId, preset, newId) {
   assert(targetIndex >= 0, 'Document must contain a pattern layer');
   const target = document.layers[targetIndex];
   const nextLayer = switchLayerPattern(target, presetData.layer.type);
+  nextLayer.imageSource = target.imageSource ?? 'auto';
   for (const key of CURRENT_PATTERN_KEYS) nextLayer[key] = clone(presetData.layer[key]);
   nextLayer.id = target.id;
   nextLayer.visible = target.visible;

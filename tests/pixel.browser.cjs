@@ -305,7 +305,10 @@ function mostUsedPaletteIndex(data){
   assert.equal((await swatch.inputValue()).toLowerCase(),replacement);
   const customImage=inspectPNG((await exportAsset('png',{transparent:true})).bytes);
   assertPixelLimit(customImage,8,'custom palette output');
-  assert.ok(customImage.colors.has(rgbKeyFromHex(replacement)),'editing a palette swatch changes exported PNG pixels');
+  // Palette edits remap source colors by their distance. A deliberately remote
+  // replacement may be unused, but the removed, previously used color must go.
+  assert.ok(!customImage.colors.has(rgbKeyFromHex(customData.palette[paletteIndex])),'the replaced palette color is absent from the export');
+  assert.notDeepEqual(customImage.png.data,beforeCustom.png.data,'editing a used palette swatch changes exported PNG pixels');
   assert.deepEqual(customImage.alphas,[0,255]);
 
   const localeLabels=[];

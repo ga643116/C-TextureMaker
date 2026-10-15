@@ -28,7 +28,7 @@ export function encodeColorMap({width,height,data}) {
   for(let i=0;i<data.length;i+=16384)binary+=String.fromCharCode(...data.subarray(i,i+16384));
   return normalizeColorMap({width,height,rgba:btoa(binary)});
 }
-export function createImageColorSampler(layer,geometry) {
+export function createImageColorSampler(layer,geometry,{nearest=false}={}) {
   const map=normalizeColorMap(layer.colorMap);
   if(!map)return null;
   const pixels=decoded.get(map.rgba),angle=-layer.rotation*Math.PI/180,ca=Math.cos(angle),sa=Math.sin(angle);
@@ -37,6 +37,10 @@ export function createImageColorSampler(layer,geometry) {
     const u=((ca*dx-sa*dy)*(layer.flipX?-1:1))/geometry.width+.5;
     const v=((sa*dx+ca*dy)*(layer.flipY?-1:1))/geometry.height+.5;
     if(u<0||u>1||v<0||v>1)return [0,0,0,0];
+    if(nearest){
+      const px=Math.max(0,Math.min(map.width-1,Math.floor(u*map.width))),py=Math.max(0,Math.min(map.height-1,Math.floor(v*map.height))),i=(py*map.width+px)*4;
+      return [pixels[i],pixels[i+1],pixels[i+2],pixels[i+3]];
+    }
     const px=Math.max(0,Math.min(map.width-1,u*map.width-.5)),py=Math.max(0,Math.min(map.height-1,v*map.height-.5));
     const x0=Math.floor(px),y0=Math.floor(py),x1=Math.min(map.width-1,x0+1),y1=Math.min(map.height-1,y0+1),fx=px-x0,fy=py-y0;
     let alpha=0,r=0,g=0,b=0;

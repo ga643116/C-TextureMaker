@@ -35,7 +35,9 @@ test('createUserPreset stores only the selected layer and preview metadata as in
   assert.deepEqual(Object.keys(preset), ['id', 'name', 'version', 'layer', 'seed', 'width', 'height']);
   assert.equal(preset.name, 'My dots');
   assert.equal(preset.version, 2);
-  assert.deepEqual(preset.layer, layer);
+  const expectedLayer = structuredClone(layer);
+  delete expectedLayer.imageSource;
+  assert.deepEqual(preset.layer, expectedLayer);
   assert.equal(preset.seed, 123);
   assert.equal(preset.width, 640);
   assert.equal(preset.height, 360);
