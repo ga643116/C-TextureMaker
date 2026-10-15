@@ -10,6 +10,8 @@
 
 **本次更新**：易用性改善與修正，包括預設與專案分離、未儲存提醒、拖入圖片及畫布比例鎖定。
 
+**功能展示 · 30 秒**
+
 https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 <details>
@@ -87,3 +89,4 @@ Low Poly 可調頂點密度、形狀變化、主／次色、漸層角度與色�
 Transitions.dev 動畫與 Microsoft WebView2 元件依各自條款使用；整個成品不應被描述為只受 MPL-2.0 管轄。詳見 [第三方聲明](THIRD-PARTY-NOTICES.txt)、[Transitions.dev 授權](app/vendor/LICENSE.txt) 及便攜包中的 LICENSE-WebView2.txt。
 
 圖樣工作流程參考 [rahoo 素材生成](https://rahoo.online/)；本機實作未複製其程式碼或圖形素材。開場生成動畫來自 [Transitions.dev 官方來源](https://github.com/Jakubantalik/transitions.dev/tree/main/skills/transitions-ui-generation)。
+
