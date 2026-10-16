@@ -1,14 +1,14 @@
 # C-TextureMaker
 
-17 種類の調整可能なパターンから、透明・シームレス対応素材を作成して SVG／PNG に書き出す、オフライン Windows 向けパターンスタジオです。
+18 種類の調整可能なパターンから、透明・シームレス対応素材を作成して SVG／PNG に書き出す、オフライン Windows 向けパターンスタジオです。
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.5.0 公開プレビュー** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.5.0/C-TextureMaker-1.5.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.5.0) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
+**v1.6.2** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.2/C-TextureMaker-1.6.2-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.2) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
 
-[1.5.0 の主な変更点](docs/releases/v1.5.0.md#日本語)
+[1.6.2 の主な変更点](docs/releases/v1.6.2.md#日本語)
 
-**今回の更新**：Pixel 変換、編集可能なパレット、実ピクセルサイズ出力、複数選択とドラッグ操作に対応したレイヤーのグループ管理を追加しました。
+**今回の更新**：「形状再描画」で色面・3色・輪郭線に変換。領域編集、画面の色取得、モード切り替えを改善し、元に戻す／やり直しを30段階まで保持します。
 
 https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
@@ -30,11 +30,10 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 ![シームレス書き出しのアニメーション](docs/media/seamless-export.gif)
 
 
-> **開発中：1.6.0**（未公開）では「形状再描画」を追加。色面／3色、元の色とパレット、線画、分割の細かさ、直線化を調整できます。生成後の領域は非表示・復元・色変更でき、プロジェクトにも保存されます。上のダウンロードは1.5.0です。
-
 ## 機能
 
-- 17 種類のパターン：同心円弧、ハーフトーンドット、HUD ゲージ、円形目盛り、装飾バーコード、波線、平行線、ドットグリッド、多角形グリッド、等高線、ローポリ、シンボル配列、入れ子多角形、地球儀、エンジニアリンググリッド、放射光線、Pixel。
+- 18 種類のパターン：同心円弧、ハーフトーンドット、HUD ゲージ、円形目盛り、装飾バーコード、波線、平行線、ドットグリッド、多角形グリッド、等高線、ローポリ、シンボル配列、入れ子多角形、地球儀、エンジニアリンググリッド、放射光線、Pixel、形状再描画。
+- 形状再描画は画像を編集可能な色面に変換し、分割の細かさ、直線化、線画、パレットを調整できます。領域の複数選択・非表示／再表示・色変更に対応し、生成した形状は元画像の変形に追従します。
 - Pixelは2〜256色、自動抽出・内蔵・カスタムパレット、サンプリング、ディザリング、キャンバスサイズ／実ピクセルサイズ出力に対応。Ctrl+Gでグループ化し、複数選択やドラッグで並べ替え・グループ内外への移動ができます。
 - 形状、色、回転、拡大縮小、位置をリアルタイム調整。レイヤー、プリセット、元に戻す／やり直し、.ctm プロジェクトに対応します。最大 16 のコンテンツレイヤーと 16 のグループを使用でき、作業と設定はローカルに自動保存されます。
 - シームレスモードはキャンバス周期に合わせて配置します。3 × 3 プレビューで継ぎ目を確認でき、書き出しは 1 タイルです。
@@ -46,7 +45,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ## ダウンロードと起動
 
-1. [C-TextureMaker-1.5.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.5.0/C-TextureMaker-1.5.0-win-x64.zip) をダウンロードし、全体を展開します。
+1. [C-TextureMaker-1.6.2-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.2/C-TextureMaker-1.6.2-win-x64.zip) をダウンロードし、全体を展開します。
 2. C-TextureMaker.exe を起動します。app フォルダーと DLL は隣に残してください。
 3. 書き込み可能な場所にフォルダー全体を置くと、隣接する data フォルダーに作業と設定を保存できます。
 
@@ -68,7 +67,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 最初の保存時に場所を選び、次回から同じファイルを更新します。右側の矢印またはCtrl+Shift+Sで別名保存できます。.ctmを開いた場合もそのファイルへ保存します。各レイヤーのパターン設定とセル編集は切り替え後も記憶され、プロジェクトにも保存されます。リセットは現在のパターンだけに適用されます。
 
-1.5.0は旧プロジェクトと既存の画像参照を保持します。Pixelやグループを含むプロジェクトは1.5.0以降で開いてください。
+1.6.2は旧プロジェクトと既存の画像参照を保持します。Pixelやグループを含むプロジェクトは1.5.0以降で開いてください。
 
 ## ソースからビルド
 

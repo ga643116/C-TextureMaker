@@ -1,14 +1,14 @@
 # C-TextureMaker
 
-An offline Windows pattern studio for creating transparent, seamless-ready assets from 17 adjustable pattern families, with SVG and PNG export.
+An offline Windows pattern studio for creating transparent, seamless-ready assets from 18 adjustable pattern families, with SVG and PNG export.
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.5.0 public preview** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.5.0/C-TextureMaker-1.5.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.5.0) · [Source](https://github.com/ga643116/C-TextureMaker)
+**v1.6.2** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.2/C-TextureMaker-1.6.2-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.2) · [Source](https://github.com/ga643116/C-TextureMaker)
 
-[See what's new in 1.5.0](docs/releases/v1.5.0.md#english)
+[See what's new in 1.6.2](docs/releases/v1.6.2.md#english)
 
-**This update**: Pixel conversion, editable palettes, native pixel-size export, and grouped layers with multi-selection and drag-and-drop management.
+**This update**: Shape redraw with color blocks, three colors and outlines; improved region editing, screen color picking and mode switching, plus 30-step undo/redo.
 
 https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
@@ -30,11 +30,10 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 ![Seamless export animation](docs/media/seamless-export.gif)
 
 
-> **In development: 1.6.0** (not released) adds Shape redraw: color blocks/three colors, original colors and palettes, optional line art, region detail and edge straightness. Generated regions can be hidden, restored and recolored, with edits saved in projects. The download above remains 1.5.0.
-
 ## Features
 
-- 17 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, radial beams, and Pixel art.
+- 18 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, radial beams, Pixel art, and Shape redraw.
+- Shape redraw converts images into editable color regions, with controls for region detail, edge straightness, line art and palettes. Multi-select, hide/show and recolor regions; generated shapes follow source image transforms.
 - Pixel supports 2–256 colors, extracted/built-in/custom palettes, sampling and dithering, with canvas-size or native pixel-grid export. Use Ctrl+G to group, multi-select layers and drag to reorder or move into and out of groups.
 - Adjust shape, color, rotation, scale, and position live. Use layers, presets, undo/redo, and .ctm projects. Projects support up to 16 content layers plus 16 groups; work and preferences are saved locally.
 - Seamless mode arranges patterns to the canvas tile period. The 3 × 3 preview helps inspect seams; exports remain a single tile.
@@ -46,7 +45,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ## Download and launch
 
-1. Download [C-TextureMaker-1.5.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.5.0/C-TextureMaker-1.5.0-win-x64.zip) and extract the entire archive.
+1. Download [C-TextureMaker-1.6.2-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.2/C-TextureMaker-1.6.2-win-x64.zip) and extract the entire archive.
 2. Open C-TextureMaker.exe. Keep the app folder and DLL files beside it.
 3. Place the whole folder somewhere writable so the app can save work and preferences in the adjacent data folder.
 
@@ -68,7 +67,7 @@ Low Poly offers vertex density, shape variation, primary / secondary colors, gra
 
 Save project asks for a location once, then updates that file. Use the adjacent arrow or Ctrl+Shift+S for Save As. Opening a .ctm also sets its save destination. Each layer remembers every pattern's settings and cell edits, including across project saves; Reset affects only the current pattern.
 
-1.5.0 opens older projects and retains their image source bindings. Projects containing Pixel or groups require 1.5.0 or later.
+1.6.2 opens older projects and retains their image source bindings. Projects containing Pixel or groups require 1.5.0 or later.
 
 ## Build from source
 

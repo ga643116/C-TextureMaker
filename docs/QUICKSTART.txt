@@ -1,8 +1,8 @@
-C-TextureMaker 1.6.0 — Quick Start
-公開預覽 | Public preview | 公開プレビュー
+C-TextureMaker 1.6.2 — Quick Start
+公開版本 | Public release | 公開リリース
 
 已公開版本 / Published downloads / 公開済みバージョン:
-https://github.com/ga643116/C-TextureMaker/releases
+https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.2
 原始碼 / Public source / 公開ソース:
 https://github.com/ga643116/C-TextureMaker
 
@@ -63,15 +63,15 @@ Ctrl+Sは最初に.ctmの保存場所を選び、次回から同じファイル�
 作業と設定はアプリの隣の data フォルダーに保存されます。終了前にステータスバーの「自動保存済み」を確認し、デザインの移動やバックアップには .ctm プロジェクトを別途保存してください。
 本プロジェクト独自のコードは MPL-2.0 です。Transitions.dev と Microsoft WebView2 には各自の条件が適用されます。LICENSE、LICENSE-SCOPE.md、THIRD-PARTY-NOTICES.txt、ポータブル版の LICENSE-WebView2.txt を参照してください。
 
-Pixel（1.5.0 測試版）
+Pixel
 左側選 Pixel，匯入圖片作為色彩圖層，再選回 Pixel 調整。像素量拉桿控制長邊 4–512 格，短邊依畫布比例計算。色數上限為 2–256；可自動取色、選灰階或復古綠色板，點擊色塊改為自訂色。圖片可在自己的圖層調整尺寸、旋轉及翻轉。
 「目前畫布尺寸」保留大圖尺寸；「實際像素格尺寸」將每格輸出為 1 px，例如 64 × 32。此設定同時作用於 SVG 與 PNG，且不縮小專案畫布。PNG 先以格數合成可見圖層，再用最近鄰方式放大；色數限制只適用 Pixel 圖層，背景與其他圖層可能增加成品色數。Pixel 使用二值透明度讓輪廓清晰。
 
-Pixel (1.5.0 test build)
+Pixel
 Select Pixel, import an image as a color layer, then select Pixel again. The pixel-count slider sets 4–512 cells on the long edge; the short edge follows the canvas ratio. Limit colors to 2–256, choose automatic, grayscale or retro green, and edit swatches to create a custom palette. Transform the source on its own image layer.
 Canvas size keeps the large output; Actual pixel grid exports each cell as 1 px (for example 64 × 32), for both SVG and PNG, without resizing the project canvas. PNG composites visible layers at grid resolution before nearest-neighbor enlargement. The color limit applies to the Pixel layer; backgrounds and other layers may add colors. Pixel transparency is binary for crisp edges.
 
-Pixel（1.5.0 テスト版）
+Pixel
 Pixel を選び、色レイヤーとして画像を読み込んでから Pixel を再選択します。スライダーで長辺を 4–512 セルに調整し、短辺はキャンバスの比率に合わせます。色数は 2–256 色。画像から抽出・グレースケール・レトログリーンを選べ、色をクリックするとカスタムパレットになります。元画像の変形は画像レイヤーで調整します。
 キャンバスサイズは大きな出力を維持し、実ピクセルサイズは各セルを 1 px（例：64 × 32）で SVG・PNG に出力します。プロジェクトのキャンバスは変更しません。PNG はグリッド解像度で表示レイヤーを合成してから最近傍法で拡大します。色数の上限は Pixel レイヤーのみで、背景や他のレイヤーにより出力色数が増える場合があります。透明度は二値で輪郭を鮮明に保ちます。
 
@@ -91,6 +91,6 @@ Pixelの密度は長辺のセル数、幅、ブロックサイズで調整でき
 
 形狀重繪 / Shape redraw / 形状再描画
 ----------------------------------
-選擇「形狀重繪」並匯入圖片，按「生成」建立可編輯色塊。分塊細碎程度越高會保留更多小區域，調整後按「重新分割」套用；有手動編輯時會先詢問。直邊程度越高，輪廓折線越簡潔，調整不會清除單元編輯。色塊／三色、線稿、原色與色板可獨立調整；原色是區域代表色，不保留原圖紋理。使用單元工具點選區域，顯示／隱藏或換色，支援復原與重做。生成結果與編輯隨專案保存；來源圖片或位置變更後，可再次生成更新結果。複雜背景會一起轉換，透明 PNG 最適合剪影效果。
-Select Shape redraw, import an image and Generate editable regions. Higher Region detail retains smaller pieces; use Re-segment after changing it, with confirmation when manual edits exist. Higher Edge straightness simplifies boundaries without clearing region edits. Switch color blocks/three colors, line art and palettes independently. Original colors are representative region colors, not original textures. Select regions to hide, restore or recolor them, with undo/redo. Results and edits are saved in the project; regenerate after changing source images or placement. Backgrounds are also converted; transparent PNG works best for cutouts.
-「形状再描画」で画像を読み込み、生成して編集可能な領域を作ります。「分割の細かさ」を上げると小さな領域が残り、変更後は再分割で反映します。手動編集がある場合は確認します。「直線化」を上げると輪郭を簡略化し、領域の編集は保持します。色面／3色、線画、元の色とパレットを個別に切り替えられます。元の色は領域の代表色であり、元画像のテクスチャではありません。領域を選択して非表示・復元・色変更でき、元に戻す／やり直しにも対応します。結果と編集はプロジェクトに保存されます。ソースや配置を変えた後は再生成してください。背景も変換されるため、切り抜きには透明PNGが適しています。
+選擇「形狀重繪」並匯入圖片，按「生成」建立可編輯色塊。分塊細碎程度越高會保留更多小區域，調整後按「重新分割」套用；有手動編輯時會先詢問。直邊程度越高，輪廓折線越簡潔，調整不會清除單元編輯。可切換色塊／三色／輪廓線，並調整線稿與色板；原色是區域代表色，不保留原圖紋理。Ctrl＋點擊可複選區塊，點擊空白取消選取；隱藏工具單擊切換顯示，填充顏色可用於改色。藍色邊緣提示滑鼠下的區塊。螢幕取色以左鍵確認，右鍵或 Esc 取消。復原／重做最多保留30步。結果與編輯隨專案保存；生成形狀會跟隨來源圖片移動、縮放、旋轉與翻轉，替換圖片或改變多張來源的相對配置後請重新生成。複雜背景會一起轉換，透明 PNG 最適合剪影效果。
+Select Shape redraw, import an image and Generate editable regions. Higher Region detail retains smaller pieces; use Re-segment after changing it, with confirmation when manual edits exist. Higher Edge straightness simplifies boundaries without clearing region edits. Switch between color blocks, three colors and outlines, with line art and palette controls. Original colors are representative region colors, not original textures. Ctrl-click to multi-select; click empty space to deselect. The hide tool toggles a region on each click; use Fill color to recolor it. Blue hover edges identify the region under the pointer. Screen color picking confirms with left-click and cancels with right-click or Esc. Undo/redo retains up to 30 steps. Results and edits are saved in projects, and generated shapes follow source movement, scale, rotation and flips. Regenerate after replacing sources or changing their relative arrangement. Backgrounds are also converted; transparent PNG works best for cutouts.
+「形状再描画」で画像を読み込み、生成して編集可能な領域を作ります。「分割の細かさ」を上げると小さな領域が残り、変更後は再分割で反映します。手動編集がある場合は確認します。「直線化」は輪郭を簡略化し、領域の編集を保持します。色面／3色／輪郭線を切り替え、線画とパレットも調整できます。元の色は領域の代表色で、元画像のテクスチャではありません。Ctrl＋クリックで複数選択、空白をクリックして解除します。非表示ツールはクリックごとに表示を切り替え、「塗りつぶしの色」で色変更できます。青い枠はポインター下の領域を示します。画面の色取得は左クリックで確定、右クリックかEscでキャンセルします。元に戻す／やり直しは最大30段階です。結果と編集はプロジェクトに保存され、形状は元画像の移動・拡大縮小・回転・反転に追従します。画像の置き換えや複数画像の相対配置を変更した場合は再生成してください。背景も変換されるため、切り抜きには透明PNGが適しています。
