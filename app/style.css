@@ -172,3 +172,34 @@ body.file-dropping:after{content:attr(data-drop-hint);position:fixed;inset:12px;
 .group-name-field input{width:100%;height:34px;margin-top:5px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--ink);font:inherit}
 .group-counts{font-size:13px;font-weight:600}
 @media(max-width:950px){.layer-add-actions .icon-btn{width:22px;padding:5px}.layer{padding-left:calc(2px + var(--layer-depth,0)*10px)}}
+
+/* Shape redraw controls and editable vector regions. */
+.redraw-inspector-head .actions{display:grid;grid-template-columns:minmax(0,1fr) 32px 32px}
+.redraw-inspector-head .actions .button{min-width:0;white-space:normal;font-size:12px}
+.redraw-inspector-head [data-action=redraw-import]{grid-column:1 / -1}
+.redraw-thumb{display:block;width:100%;height:100%}
+.redraw-mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin:4px 0 14px;padding:2px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+.redraw-mode-switch .button{min-width:0;padding:6px 4px;font-size:12px}
+.redraw-mode-switch .button.active,.redraw-edit-tools .button.active{background:var(--ink);border-color:var(--ink);color:var(--panel);font-weight:650}
+.redraw-status{display:flex;align-items:center;gap:8px;min-height:29px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--muted);font-size:12px;line-height:1.4}
+.redraw-status[data-state=busy]:before{content:"";width:12px;height:12px;flex:0 0 12px;border:2px solid var(--line);border-top-color:var(--ink);border-radius:50%;animation:redraw-spin .8s linear infinite}
+.redraw-status[data-state=ready]{color:var(--ink)}
+.redraw-status[data-state=error]{border-color:#c85b4a;color:#a93629}
+.redraw-stale{padding:7px 9px;border-left:2px solid var(--accent);background:var(--bg)}
+.redraw-palette-wrap{margin-top:12px}
+.redraw-palette{display:grid;grid-template-columns:repeat(auto-fill,minmax(25px,1fr));gap:6px;margin-top:7px}
+.redraw-swatch{display:block;height:25px;overflow:hidden;border:1px solid var(--line);border-radius:4px;background:var(--bg);cursor:pointer}
+.redraw-swatch input[type=color]{display:block;width:100%;height:100%;padding:2px;border:0;background:transparent;cursor:pointer}
+.redraw-swatch input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+.redraw-swatch input[type=color]::-webkit-color-swatch{border:0;border-radius:2px}
+.redraw-edit-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-bottom:14px}
+.redraw-edit-tools .button{min-width:0;padding:6px 4px;font-size:11px;white-space:nowrap}
+.redraw-region-readout{display:flex;align-items:center;gap:7px;margin:12px 0;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.redraw-region-readout strong{color:var(--ink)}
+.redraw-color-chip{width:14px;height:14px;flex:0 0 14px;border:1px solid #0004;border-radius:3px;background:var(--region-color)}
+#redraw-region-color,#redraw-tool-color{width:34px;height:27px;padding:2px;border:1px solid var(--line);border-radius:4px;background:var(--bg);cursor:pointer}
+#artboard [data-redraw-region]{cursor:pointer;pointer-events:all}
+#artboard [data-redraw-region].redraw-selected{stroke:var(--accent)!important;stroke-width:3px!important;stroke-linejoin:round;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 1px var(--ink))}
+@keyframes redraw-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.redraw-status[data-state=busy]:before{animation-duration:2.4s}}
+@media(max-width:560px){.redraw-palette{grid-template-columns:repeat(auto-fill,minmax(22px,1fr));gap:4px}.redraw-swatch{height:22px}}

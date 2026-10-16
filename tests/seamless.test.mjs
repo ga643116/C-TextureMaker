@@ -9,7 +9,7 @@ import {Resvg} from '@resvg/resvg-js';
 import {PNG} from 'pngjs';
 import {PATTERNS,createDocument,createLayer,renderSVG,normalizeDocument} from '../app/engine.mjs';
 
-const setup=type=>{const d=createDocument();d.width=384;d.height=320;d.seamless=true;d.layers=[createLayer(type,'seamless-test')];d.layers[0].color='#111111';return d;};
+const setup=type=>{const d=createDocument();d.width=384;d.height=320;d.seamless=true;d.layers=[createLayer(type,'seamless-test')];d.layers[0].color='#111111';if(type==='redraw')d.layers[0].redrawData={version:1,width:128,height:128,detail:55,regions:[{id:'r0',color:'#111111',role:2,rings:[[16,16,112,16,112,112,16,112]]}],lines:[]};return d;};
 const raster=svg=>PNG.sync.read(new Resvg(svg).render().asPng());
 const centers=svg=>[...svg.matchAll(/<g transform="rotate\([-\d.]+ ([-\d.]+) ([-\d.]+)\)">/g)].map(m=>[Number(m[1]),Number(m[2])]);
 const source=svg=>svg.slice(svg.indexOf('<g id="source-seamless-test"'),svg.indexOf('</defs>'));
@@ -96,7 +96,7 @@ test('seamless polygon outlines auto-fit oversized strokes without touching neig
   }
 });
 
-test('all sixteen seamless generators preserve single-layer opacity and export the same repeated tile',()=>{
+test('all generated patterns preserve single-layer opacity and export the same repeated tile',()=>{
   const width=192,height=224,parts=[],columns=5;
   for(const [i,pattern] of PATTERNS.entries()){
     const d=setup(pattern.id);d.width=width;d.height=height;d.layers[0].id=`opacity-${pattern.id}`;

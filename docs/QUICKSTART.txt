@@ -1,4 +1,4 @@
-C-TextureMaker 1.5.0 — Quick Start
+C-TextureMaker 1.6.0 — Quick Start
 公開預覽 | Public preview | 公開プレビュー
 
 已公開版本 / Published downloads / 公開済みバージョン:
@@ -88,3 +88,9 @@ Pixel density can follow long-edge count, width, or block size. Choose average/n
 画像ソースは「全レイヤー／画像／画像なし」を切り替えます。「画像」は直下にある画像またはグループを参照し、連続する複数の効果で同じベースを共有します。矢印が参照関係を示します。上の不透明部分は下を覆います。旧プロジェクトの参照は「画像」を選び直すまで保持します。
 Ctrl＋クリックで複数選択、Shift＋クリックで範囲選択。Ctrl+Gでグループ化、Ctrl+Shift+Gで解除します。ドラッグで並べ替え、フォルダー中央にドロップして移入、ルートのドロップ領域に移動して外へ出せます。グループは折りたたみ、名前変更、内容ごとの表示切り替えに対応します。「元画像を表示」は画像自体を表示します。グループを含むプロジェクトは1.5.0以降で開いてください。
 Pixelの密度は長辺のセル数、幅、ブロックサイズで調整できます。平均／最近傍サンプリング、2〜256色、ディザリング、明るさ／コントラスト／彩度を設定できます。「実ピクセルサイズ」は1セルを1 pxで出力し、PNGは表示中の全レイヤーを合成します。他のツールと比べる際は出力の幅・高さ・色数を揃えてください。
+
+形狀重繪 / Shape redraw / 形状再描画
+----------------------------------
+選擇「形狀重繪」並匯入圖片，按「生成」建立可編輯色塊。分塊細碎程度越高會保留更多小區域，調整後按「重新分割」套用；有手動編輯時會先詢問。直邊程度越高，輪廓折線越簡潔，調整不會清除單元編輯。色塊／三色、線稿、原色與色板可獨立調整；原色是區域代表色，不保留原圖紋理。使用單元工具點選區域，顯示／隱藏或換色，支援復原與重做。生成結果與編輯隨專案保存；來源圖片或位置變更後，可再次生成更新結果。複雜背景會一起轉換，透明 PNG 最適合剪影效果。
+Select Shape redraw, import an image and Generate editable regions. Higher Region detail retains smaller pieces; use Re-segment after changing it, with confirmation when manual edits exist. Higher Edge straightness simplifies boundaries without clearing region edits. Switch color blocks/three colors, line art and palettes independently. Original colors are representative region colors, not original textures. Select regions to hide, restore or recolor them, with undo/redo. Results and edits are saved in the project; regenerate after changing source images or placement. Backgrounds are also converted; transparent PNG works best for cutouts.
+「形状再描画」で画像を読み込み、生成して編集可能な領域を作ります。「分割の細かさ」を上げると小さな領域が残り、変更後は再分割で反映します。手動編集がある場合は確認します。「直線化」を上げると輪郭を簡略化し、領域の編集は保持します。色面／3色、線画、元の色とパレットを個別に切り替えられます。元の色は領域の代表色であり、元画像のテクスチャではありません。領域を選択して非表示・復元・色変更でき、元に戻す／やり直しにも対応します。結果と編集はプロジェクトに保存されます。ソースや配置を変えた後は再生成してください。背景も変換されるため、切り抜きには透明PNGが適しています。

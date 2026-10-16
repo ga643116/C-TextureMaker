@@ -13,11 +13,12 @@ const raster=svg=>PNG.sync.read(new Resvg(svg).render().asPng());
 const alpha=(png,x,y)=>png.data[(y*png.width+x)*4+3];
 const setup=type=>{const d=createDocument();d.layers=[createLayer(type,'raster-layer')];d.layers[0].color='#253020';return d;};
 
-test('all seventeen patterns produce visible artwork and preserve unpainted transparency',()=>{
+test('patterns preserve transparency and image-dependent redraw waits for generated regions',()=>{
   for(const p of PATTERNS){
     const image=raster(renderSVG(setup(p.id)));
     let painted=0,empty=0;
     for(let i=3;i<image.data.length;i+=4){if(image.data[i]>0)painted++;else empty++;}
+    if(p.id==='redraw'){assert.equal(painted,0,'redraw without generated image regions stays empty');continue;}
     assert.ok(painted>500,`${p.id}: artwork must not be blank`);
     if(['lowpoly','pixel'].includes(p.id)){
       assert.equal(empty,0,'default filled patterns intentionally cover the entire tile');

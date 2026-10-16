@@ -6,6 +6,7 @@
 /desktop/vendor-cache/
 /desktop/build-staging/
 /app/bundle.js
+/app/redraw-worker.js
 
 # Application data and runtime caches
 /data/

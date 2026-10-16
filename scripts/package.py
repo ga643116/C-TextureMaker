@@ -43,6 +43,7 @@ def main():
     app_files = [
         "index.html",
         "bundle.js",
+        "redraw-worker.js",
         "style.css",
         "icon.svg",
         "vendor/ui-generation.css",

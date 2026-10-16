@@ -30,6 +30,8 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 ![Seamless export animation](docs/media/seamless-export.gif)
 
 
+> **In development: 1.6.0** (not released) adds Shape redraw: color blocks/three colors, original colors and palettes, optional line art, region detail and edge straightness. Generated regions can be hidden, restored and recolored, with edits saved in projects. The download above remains 1.5.0.
+
 ## Features
 
 - 17 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, radial beams, and Pixel art.

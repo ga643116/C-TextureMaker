@@ -16,6 +16,8 @@ import {ratioLabel,resizeCanvas} from './canvas-size.mjs';
 import {pixelExportSize,resizeSVG} from './pixel-export.mjs';
 import {createUserPreset,applyUserPreset,presetPreview} from './user-presets.mjs';
 import {isGroupLayer,isPatternLayer,parentOf,childrenOf,descendantsOf,isLayerVisible,visibleLayerRows,clippingBase,groupLayers,moveLayers,ungroupLayers,canonicalizeLayers,createGroup} from './layer-tree.mjs';
+import {generateRedraw} from './redraw-client.mjs';
+import {getRedrawPalette,redrawRegionColor} from './shape-redraw.mjs';
 
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const clone=v=>JSON.parse(JSON.stringify(v));
@@ -33,6 +35,8 @@ let category='all',query='',repeat=1,tileEdges=true,zoom=1,pan={x:0,y:0},focus=f
 let imageTarget='customMotif',editMode='toggle',connectStart=null,frame=0,saveTimer=0,toastTimer=0,motionRun=null,autosaveSequence=0,autosaveQueue=Promise.resolve(),presetWriteQueue=Promise.resolve();
 let canvasTool='cursor',brushSize=clamp(Number(prefs.brushSize)||64,4,4096),sharedShapes=[],shapeLibraryReady=false,shapeWriteQueue=Promise.resolve();
 const thumbs=new Map(),nativeSaves=new Map();
+const redrawJobs=new Map(),redrawStates=new Map(),redrawSnapshotSignatures=new Map(),sourceQualityJobs=new WeakMap();
+let selectedRedrawRegion=null,redrawEditMode='select',redrawToolColor='#202020',redrawConfirmResolve=null;
 const nativeHost=window.chrome?.webview;
 const projectFiles=createProjectFiles({host:nativeHost,download:saveFile});
 let projectFileBusy=false,navigationBusy=false,closeRequestBusy=false,allowUnload=false;
@@ -75,7 +79,7 @@ function selectLayer(id,{toggle=false,range=false}={}){
  }else if(toggle){
   if(selectedIds.has(id)){if(selectedIds.size>1)selectedIds.delete(id);if(selected===id)selected=[...selectedIds].at(-1)??id;}else{selectedIds.add(id);selected=id;selectionAnchor=id;}
  }else{selectedIds=new Set([id]);selected=id;selectionAnchor=id;}
- syncLayerSelection(selected);if(isPatternLayer(active()))lastPatternId=selected;connectStart=null;renderApp();
+ syncLayerSelection(selected);if(selectedRedrawRegion?.layerId!==selected)selectedRedrawRegion=null;if(isPatternLayer(active()))lastPatternId=selected;connectStart=null;renderApp();
 }
 const pattern=id=>PATTERNS.find(p=>p.id===id)??PATTERNS[0];
 const label=x=>localized(x,lang);
@@ -96,7 +100,7 @@ function checkbox(key,text,checked,target='doc'){return `<label class="toggle-ro
 function numeric(key,text,value,min,max,step=1,target='params'){return `<div class="field"><div class="field-head"><label for="r-${key}">${esc(text)}</label><input aria-label="${esc(text)}" type="number" data-target="${target}" data-key="${key}" value="${value}" min="${min}" max="${max}" step="${step}"></div><input id="r-${key}" aria-label="${esc(text)}" type="range" data-target="${target}" data-key="${key}" value="${value}" min="${min}" max="${max}" step="${step}"></div>`;}
 function colorField(key,text,value,target='layer'){return `<div class="field"><label>${esc(text)}</label><div class="color-field"><input aria-label="${esc(text)}" type="color" data-target="${target}" data-key="${key}" value="${esc(value)}"><input aria-label="${esc(text)} HEX" type="text" data-target="${target}" data-key="${key}" value="${esc(value)}" maxlength="7" pattern="#[a-fA-F0-9]{6}"></div></div>`;}
 function details(key,text,content,open=true){return `<details data-section="${key}" ${open?'open':''}><summary>${esc(text)}</summary><div class="detail-content">${content}</div></details>`;}
-function defaultThumb(p){if(!thumbs.has(p.id)){const d=createDocument();d.width=d.height=1024;d.transparent=true;d.layers=[createLayer(p.id,`thumb-${p.id}`)];d.layers[0].color='#687354';d.layers[0].secondary='#929e7e';d.layers[0].params={...p.defaults};for(const key of ['strokeWidth','innerWidth','outerWidth'])if(key in d.layers[0].params)d.layers[0].params[key]=Math.min(8,Math.max(5,d.layers[0].params[key]));try{thumbs.set(p.id,`<img src="data:image/svg+xml,${encodeURIComponent(renderSVG(d))}" alt="">`);}catch{thumbs.set(p.id,'');}}return thumbs.get(p.id);}
+function defaultThumb(p){if(!thumbs.has(p.id)){if(p.id==='redraw'){thumbs.set(p.id,'<svg class="redraw-thumb" viewBox="0 0 72 48" aria-hidden="true"><path fill="#d7c9a8" d="M4 5h26l5 10-11 11H4z"/><path fill="#8c9c78" d="m30 5 17 4 8 12-20 12-11-7 11-11z"/><path fill="#b16e51" d="m4 26 20 0 11 7-8 11H4z"/><path fill="#657b78" d="m35 33 20-12 13 7v16H27z"/><path fill="none" stroke="#27302b" stroke-width="1.5" d="M4 5h26l5 10-11 11H4zM30 5l17 4 8 12-20 12-11-7M4 26h20l11 7-8 11H4z"/></svg>');return thumbs.get(p.id);}const d=createDocument();d.width=d.height=1024;d.transparent=true;d.layers=[createLayer(p.id,'thumb-'+p.id)];d.layers[0].color='#687354';d.layers[0].secondary='#929e7e';d.layers[0].params={...p.defaults};for(const key of ['strokeWidth','innerWidth','outerWidth'])if(key in d.layers[0].params)d.layers[0].params[key]=Math.min(8,Math.max(5,d.layers[0].params[key]));try{thumbs.set(p.id,'<img src="data:image/svg+xml,'+encodeURIComponent(renderSVG(d))+'" alt="">');}catch{thumbs.set(p.id,'');}}return thumbs.get(p.id);}
 function renderPatternList(){const current=activePattern(),items=PATTERNS.filter(p=>(category==='all'||p.category===category)&&(!query||Object.values(p.name).some(n=>n.toLowerCase().includes(query.toLowerCase()))));$('#pattern-list').innerHTML=items.map(p=>`<button class="pattern-card ${current.type===p.id?'active':''}" data-pattern="${p.id}" title="${esc(label(p.description))}" aria-label="${esc(label(p.name))}" aria-pressed="${current.type===p.id}"><div class="thumb" aria-hidden="true">${defaultThumb(p)}</div><span class="name">${esc(label(p.name))}</span></button>`).join('')||`<p class="empty">${esc(t('noResults'))}</p>`;}
 function imageModeSelector(layer){return `<select class="image-mode" data-action="image-mode" data-id="${esc(layer.id)}" aria-label="${esc(t('imageMode'))}">${['mask','color','image'].map(mode=>`<option value="${mode}" ${layer.mode===mode?'selected':''}>${esc(t({mask:'imageMaskMode',color:'imageColorMode',image:'imageOriginalMode'}[mode]))}</option>`).join('')}</select>`;}
 function imageSourceHint(layer){
@@ -161,7 +165,7 @@ function duplicateSelectedLayers(){
 }
 function deleteSelectedLayers(){
  const roots=selectedRootIds();if(!roots.length)return;
- const removing=new Set(roots.flatMap(id=>[id,...descendantsOf(doc,id).map(layer=>layer.id)]));
+ const removing=new Set(roots.flatMap(id=>[id,...descendantsOf(doc,id).map(layer=>layer.id)]));for(const id of removing){cancelRedrawJob(id);redrawSnapshotSignatures.delete(id);}
  const remainingPatterns=doc.layers.filter(layer=>isPatternLayer(layer)&&!removing.has(layer.id)).length;
  if(!remainingPatterns){toast('lastLayer');return;}
  const next=doc.layers.filter(layer=>!removing.has(layer.id)),preferred=next.find(isPatternLayer)?.id??next[0]?.id;
@@ -250,7 +254,173 @@ function renderGroupInspector(savedSections=null){
  $('#inspector').innerHTML='<div class="inspector-head group-inspector-head"><div class="eyebrow">'+esc(t('layers'))+'</div><h1>'+icon('folderOpen')+esc(group.name)+'</h1><label class="field group-name-field"><span>'+esc(t('renameGroup'))+'</span><input type="text" maxlength="80" data-target="group" data-id="'+esc(group.id)+'" data-key="name" value="'+esc(group.name)+'"></label></div>'+details('group-info',t('groupLayers'),'<p class="group-counts"><strong>'+contents+'</strong> '+esc(t('groupContents'))+(nested?' · <strong>'+nested+'</strong> '+esc(t('groupNested')):'')+'</p><p class="helper">'+esc(t('groupInspectorHelp'))+'</p><p class="helper">'+esc(t('groupUsage'))+'</p>')+canvasControls();
  for(const el of $$('.inspector details'))if(sections.has(el.dataset.section))el.open=sections.get(el.dataset.section);
 }
-function renderInspector(savedSections=null){const l=active();if(isGroupLayer(l)){renderGroupInspector(savedSections);return;}if(l.type==='pixel'){renderPixelInspector(savedSections);return;}if(isImageMaskLayer(l)){renderMaskInspector(savedSections);return;}const p=pattern(l.type);const openSections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
+function redrawPaletteMarkup(layer){
+ const colors=getRedrawPalette(layer).slice(0,layer.params.mode==='three'?3:32);
+ return colors.map((color,index)=>'<label class="redraw-swatch" title="'+esc(color)+'"><input type="color" data-redraw-palette="'+index+'" value="'+esc(color)+'" aria-label="'+esc(t('redrawPaletteColor'))+' '+(index+1)+'"></label>').join('');
+}
+function redrawSourceSignature(layer){
+ const sources=resolveColorSources(doc,layer).filter(source=>source.colorMap);
+ const items=sources.map(source=>{
+  const map=source.colorMap;let hash=2166136261;
+  for(let i=0;i<map.rgba.length;i++)hash=Math.imul(hash^map.rgba.charCodeAt(i),16777619);
+  const geometry=imageMaskGeometry(source,doc);
+  return [source.id,source.mode,isLayerVisible(doc,source),map.width,map.height,(hash>>>0).toString(36),geometry.transform,geometry.width,geometry.height,source.parentId??'',source.scale,source.rotation,source.offsetX,source.offsetY,source.flipX,source.flipY];
+ });
+ return JSON.stringify([doc.width,doc.height,doc.seed,layer.imageSource??'auto',items]);
+}
+function isRedrawSnapshotStale(layer){
+ if(!layer.redrawData)return false;
+ let saved=redrawSnapshotSignatures.get(layer.id);
+ if(!saved){const detail=Number.isFinite(layer.redrawData.detail)?layer.redrawData.detail:layer.params.detail;saved={signature:redrawSourceSignature(layer),detail};redrawSnapshotSignatures.set(layer.id,saved);}
+ return saved.detail!==layer.params.detail||saved.signature!==redrawSourceSignature(layer);
+}
+function setRedrawStatus(layerId,state,message=''){
+ redrawStates.set(layerId,{state,message});
+ if(activePattern().id!==layerId||activePattern().type!=='redraw')return;
+ const el=$('#redraw-generation-status');if(!el)return;
+ el.dataset.state=state;el.textContent=t(message||(state==='busy'?'redrawGenerating':state==='ready'?'redrawReady':state==='error'?'redrawFailed':'redrawIdle'));
+ const button=$('[data-action=redraw-generate]');if(button)button.disabled=state==='busy';
+}
+function cancelRedrawJob(layerId){
+ const job=redrawJobs.get(layerId);if(!job)return;
+ redrawJobs.delete(layerId);job.controller.abort();
+ if(redrawStates.get(layerId)?.state==='busy')setRedrawStatus(layerId,'idle');
+}
+function cancelAllRedrawJobs(){
+ for(const id of [...redrawJobs.keys()])cancelRedrawJob(id);
+}
+function redrawRegionById(layer,id){return layer?.redrawData?.regions?.find(region=>region.id===id)??null;}
+function syncRedrawSelection(){
+ const layer=activePattern();
+ for(const path of $$('#artboard [data-redraw-region]')){
+  const owner=path.dataset.layer||layer?.id;
+  path.classList.toggle('redraw-selected',Boolean(selectedRedrawRegion&&selectedRedrawRegion.layerId===owner&&selectedRedrawRegion.id===path.dataset.redrawRegion));
+ }
+}
+
+function updateRedrawRegionEdit(layer,regionId,key,value){
+ cancelRedrawJob(layer.id);
+ const edits={...(layer.redrawEdits??{})},current={...(edits[regionId]??{})},region=redrawRegionById(layer,regionId);
+ if(key==='hidden'&&!value)delete current.hidden;
+ else if(key==='color'&&region&&String(value).toLowerCase()===String(region.color).toLowerCase())delete current.color;
+ else current[key]=value;
+ if(Object.keys(current).length)edits[regionId]=current;else delete edits[regionId];
+ layer.redrawEdits=edits;
+}
+function setRedrawPaletteColor(el,finish){
+ const layer=active();if(layer.type!=='redraw'||!/^#[0-9a-f]{6}$/i.test(el.value))return;
+ const index=Number(el.dataset.redrawPalette);if(!Number.isInteger(index)||index<0||index>=32)return;
+ if(pendingBefore===null)pendingBefore=JSON.stringify(doc);
+ let palette=layer.params.paletteMode==='custom'&&layer.redrawPalette?.length?[...layer.redrawPalette]:[...getRedrawPalette(layer)];
+ if(layer.params.paletteMode!=='custom'){layer.redrawPalette=palette;layer.params.paletteMode='custom';}
+ else if(!layer.redrawPalette?.length)layer.redrawPalette=palette;
+ palette[index]=el.value.toLowerCase();layer.redrawPalette=palette;
+ const selector=$('#p-paletteMode');if(selector)selector.value='custom';
+ syncDirty();schedulePreview();if(finish)flush();
+}
+function setRedrawRegionColor(el,finish){
+ const layer=active(),regionId=selectedRedrawRegion?.layerId===layer.id?selectedRedrawRegion.id:null;
+ if(layer.type!=='redraw'||!regionId||!redrawRegionById(layer,regionId)||!/^#[0-9a-f]{6}$/i.test(el.value))return;
+ if(pendingBefore===null)pendingBefore=JSON.stringify(doc);
+ updateRedrawRegionEdit(layer,regionId,'color',el.value.toLowerCase());syncDirty();schedulePreview();if(finish)flush();
+}
+function setRedrawRegionVisible(visible){
+ const layer=active(),regionId=selectedRedrawRegion?.layerId===layer.id?selectedRedrawRegion.id:null;
+ if(layer.type!=='redraw'||!regionId||!redrawRegionById(layer,regionId))return;
+ mutate(()=>updateRedrawRegionEdit(layer,regionId,'hidden',!visible));
+}
+function setRedrawToolColor(el){
+ if(!/^#[0-9a-f]{6}$/i.test(el.value))return;
+ redrawToolColor=el.value.toLowerCase();
+ for(const input of $$('#redraw-tool-color'))if(input!==el)input.value=redrawToolColor;
+}
+function selectRedrawRegion(layer,regionId){
+ const region=redrawRegionById(layer,regionId);if(!region)return;
+ selectedRedrawRegion={layerId:layer.id,id:regionId};
+ if(redrawEditMode==='select')redrawToolColor=redrawRegionColor(region,layer);
+ syncRedrawSelection();renderRedrawInspector();
+}
+function applyRedrawRegionClick(layer,regionId){
+ if(redrawEditMode==='select'){selectRedrawRegion(layer,regionId);return false;}
+ selectedRedrawRegion={layerId:layer.id,id:regionId};
+ if(redrawEditMode==='erase')updateRedrawRegionEdit(layer,regionId,'hidden',true);
+ else updateRedrawRegionEdit(layer,regionId,'color',redrawToolColor);
+ syncDirty();schedulePreview();renderRedrawInspector();return true;
+}
+function redrawErrorKey(error){
+ const keys={RedrawSourceMissing:'redrawSourceRequired',RedrawSourceEmpty:'redrawSourceEmpty',RedrawOutputTooComplex:'redrawOutputTooComplex',RedrawWorkerTimeout:'redrawWorkerTimeout',RedrawWorkerFailed:'redrawWorkerFailed',RedrawWorkerInvalidReply:'redrawWorkerInvalidReply',ProjectTooLarge:'projectTooLarge',RedrawSourceChanged:'redrawSourceChanged'};
+ return keys[error?.message]??'redrawFailed';
+}
+function confirmRedrawEdits(){
+ return new Promise(resolve=>{
+  redrawConfirmResolve=resolve;
+  const d=dialog('<div class="eyebrow">C-TextureMaker</div><h2>'+esc(t('redrawClearConfirmTitle'))+'</h2><p class="intro">'+esc(t('redrawClearConfirmBody'))+'</p><div class="modal-footer"><button type="button" class="button" data-action="redraw-cancel-generate">'+esc(t('cancel'))+'</button><button type="button" class="button primary" data-action="redraw-confirm-generate">'+esc(t('redrawConfirmGenerate'))+'</button></div>','redraw-confirm-modal');
+  d.addEventListener('close',()=>{if(redrawConfirmResolve===resolve){redrawConfirmResolve=null;resolve(false);}});
+ });
+}
+function resolveRedrawConfirmation(accepted){
+ const resolve=redrawConfirmResolve;if(!resolve)return;
+ redrawConfirmResolve=null;closeDialog();resolve(accepted);
+}
+async function generateSelectedRedraw(){
+ const layer=activePattern();if(!layer||layer.type!=='redraw')return;
+ if(Object.keys(layer.redrawEdits??{}).length&&!await confirmRedrawEdits())return;
+ if(!doc.layers.some(item=>item.id===layer.id&&item.type==='redraw'))return;
+ cancelRedrawJob(layer.id);
+ const controller=new AbortController(),job={controller,docRef:doc,projectGeneration,detail:null,signature:null,editsSignature:JSON.stringify(layer.redrawEdits??{})};
+ redrawJobs.set(layer.id,job);setRedrawStatus(layer.id,'busy');
+ const isCurrent=()=>redrawJobs.get(layer.id)===job&&doc===job.docRef&&projectGeneration===job.projectGeneration&&doc.layers.some(item=>item.id===layer.id&&item.type==='redraw');
+ try{
+  await ensurePixelSourceQuality(layer);
+  if(!isCurrent())return;
+  job.detail=layer.params.detail;job.signature=redrawSourceSignature(layer);
+  const data=await generateRedraw(doc,layer,{signal:controller.signal});
+  if(!isCurrent())return;
+  if(layer.params.detail!==job.detail||redrawSourceSignature(layer)!==job.signature||JSON.stringify(layer.redrawEdits??{})!==job.editsSignature)throw new Error('RedrawSourceChanged');
+  const beforeText=JSON.stringify(doc);
+  if(new Blob([beforeText]).size>MAX_PROJECT_BYTES)throw new Error('ProjectTooLarge');
+  const next=normalizeDocument({...doc,layers:doc.layers.map(item=>item.id===layer.id?{...item,redrawData:data,redrawEdits:{}}:item)});
+  const afterText=JSON.stringify(next);
+  if(new Blob([afterText]).size>MAX_PROJECT_BYTES)throw new Error('ProjectTooLarge');
+  if(!isCurrent())return;
+  redrawSnapshotSignatures.set(layer.id,{signature:job.signature,detail:job.detail});
+  selectedRedrawRegion=null;setRedrawStatus(layer.id,'ready');
+  mutate(()=>{doc=next;});
+ }catch(error){
+  if(error?.name==='AbortError'||!isCurrent())return;
+  const key=redrawErrorKey(error);setRedrawStatus(layer.id,'error',key);toast(key);
+ }finally{
+  if(redrawJobs.get(layer.id)===job){redrawJobs.delete(layer.id);if(redrawStates.get(layer.id)?.state==='busy')setRedrawStatus(layer.id,'idle');}
+ }
+}
+function renderRedrawInspector(savedSections=null){
+ const layer=active(),p=pattern('redraw'),sources=resolveColorSources(doc,layer);
+ if(selectedRedrawRegion?.layerId!==layer.id)selectedRedrawRegion=null;
+ const sections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
+ const controls=keys=>keys.map(key=>p.controls.find(control=>control.key===key)).filter(Boolean).map(control=>renderControl(control,layer,p)).join('');
+ const current=selectedRedrawRegion?redrawRegionById(layer,selectedRedrawRegion.id):null;
+ if(!current)selectedRedrawRegion=null;
+ const edit=current?(layer.redrawEdits?.[current.id]??{}):null;
+ const currentColor=current?redrawRegionColor(current,layer):'';
+ const status=redrawStates.get(layer.id)??{state:'idle',message:''};
+ const statusText=t(status.message||(status.state==='busy'?'redrawGenerating':status.state==='ready'?'redrawReady':status.state==='error'?'redrawFailed':'redrawIdle'));
+ const stale=isRedrawSnapshotStale(layer);
+ const modeButtons=['blocks','three'].map(mode=>'<button type="button" class="button '+(layer.params.mode===mode?'active':'')+'" data-action="redraw-mode" data-mode="'+mode+'" aria-pressed="'+(layer.params.mode===mode)+'">'+esc(t(mode==='blocks'?'redrawModeBlocks':'redrawModeThree'))+'</button>').join('');
+ const selectedRegion=current
+  ?'<div class="redraw-region-readout"><strong class="mono">'+esc(current.id)+'</strong><span class="redraw-color-chip" style="--region-color:'+esc(current.color)+'"></span><span>'+esc(t('redrawOriginalColor'))+' '+esc(current.color)+'</span></div><label class="toggle-row"><span>'+esc(t('redrawRegionVisible'))+'</span><input id="redraw-region-visible" type="checkbox" '+(edit?.hidden?'':'checked')+'></label><div class="field"><label for="redraw-region-color">'+esc(t('redrawCurrentColor'))+'</label><input id="redraw-region-color" type="color" value="'+esc(currentColor)+'"></div>'
+  :'<p class="helper">'+esc(t(layer.redrawData?'redrawRegionSelectHint':'redrawNoData'))+'</p>';
+ const regionActions='<div class="redraw-edit-tools">'+[['select','redrawEditSelect'],['erase','redrawEditErase'],['recolor','redrawEditRecolor']].map(([mode,key])=>'<button type="button" class="button '+(redrawEditMode===mode?'active':'')+'" data-action="redraw-edit-mode" data-mode="'+mode+'" aria-pressed="'+(redrawEditMode===mode)+'">'+esc(t(key))+'</button>').join('')+'</div>';
+ $('#inspector').innerHTML='<div class="inspector-head redraw-inspector-head"><div class="eyebrow">'+esc(t('properties'))+'</div><h1>'+esc(label(p.name))+'</h1><p>'+esc(label(p.description))+'</p><div class="actions"><button class="button" data-action="redraw-import">'+icon('image')+esc(t('redrawImport'))+'</button><button type="button" class="button primary" data-action="redraw-generate" '+(status.state==='busy'?'disabled':'')+'>'+icon('random')+esc(t(layer.redrawData?'redrawRegenerate':'redrawGenerate'))+'</button>'+ib('reset','reset','reset')+ib('save-preset','star','savePreset')+'</div><p class="helper">'+esc(sources.length?sources.map(source=>source.name).join(' · '):t(hasColorSource(doc,layer)?'imageSourceEmpty':'redrawSourceRequired'))+'</p><p id="redraw-generation-status" class="redraw-status" role="status" aria-live="polite" data-state="'+esc(status.state)+'">'+esc(statusText)+'</p>'+(stale?'<p class="helper redraw-stale" data-redraw-stale>'+esc(t('redrawStale'))+'</p>':'')+'</div>'
+ +details('image-source',t('imageSource'),imageSourceControls(layer),false)
+ +details('redraw-settings',t('redrawSettings'),controls(['detail'])+'<p class="helper">'+esc(t('redrawDetailHint'))+'</p><div class="redraw-mode-switch">'+modeButtons+'</div>'+controls(['straightness','paletteMode'])+'<div class="redraw-palette-wrap"><div class="field-title">'+esc(t('redrawPaletteLabel'))+'</div><div class="redraw-palette">'+redrawPaletteMarkup(layer)+'</div><p class="helper">'+esc(t('redrawPaletteHint'))+'</p></div>')
+ +details('redraw-lines',t('redrawLinesSection'),controls(['lines','lineWidth','lineColor','outlineWidth']),false)
+ +details('redraw-edits',t('redrawEditsTitle'),regionActions+'<div class="field"><label for="redraw-tool-color">'+esc(t('redrawToolColor'))+'</label><input id="redraw-tool-color" type="color" value="'+esc(redrawToolColor)+'"></div>'+selectedRegion+'<button type="button" class="button" data-action="redraw-restore" '+(Object.keys(layer.redrawEdits??{}).length?'':'disabled')+'>'+esc(t('redrawClearEdits'))+'</button>')
+ +details('appearance',t('appearance'),numeric('opacity',t('opacity'),layer.opacity,0,1,.01,'layer'),false)
+ +details('transform',t('transform'),numeric('rotation',t('rotation'),layer.rotation,-180,180,1,'layer')+numeric('scale',t('scale'),layer.scale,.1,2,.01,'layer')+numeric('offsetX',t('offsetX'),layer.offsetX,-doc.width,doc.width,1,'layer')+numeric('offsetY',t('offsetY'),layer.offsetY,-doc.height,doc.height,1,'layer'),false)
+ +canvasControls();
+ for(const el of $$('.inspector details'))if(sections.has(el.dataset.section))el.open=sections.get(el.dataset.section);
+}
+function renderInspector(savedSections=null){const l=active();if(isGroupLayer(l)){renderGroupInspector(savedSections);return;}if(l.type==='pixel'){renderPixelInspector(savedSections);return;}if(l.type==='redraw'){renderRedrawInspector(savedSections);return;}if(isImageMaskLayer(l)){renderMaskInspector(savedSections);return;}const p=pattern(l.type);const openSections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
  const fields=geometryFields(l,p);
  const palettes=[['#34392e','#97a184'],['#151515','#868686'],['#f0ebdd','#9b927e'],['#e3edcd','#839968'],['#66789a','#b7c5df'],['#c16a46','#e6ac83'],['#916b80','#d9b2c7']];
  let extra='';if(['dots','polygons'].includes(l.type))extra=details('cells',t('editCells'),`<div class="cell-modes">${['toggle','erase','paint','connect'].map(m=>`<button data-action="edit-mode" data-mode="${m}" class="${editMode===m?'active':''}">${esc(t(m))}</button>`).join('')}</div>${brushControls()}<p class="helper">${esc(t(editMode==='connect'?'connectHint':'cellHint'))}</p><div class="cell-extra-actions"><button class="button primary" data-action="add-image-mask">${icon('image')}${esc(t('addImageMask'))}</button><button class="button" data-action="restore-cells">${esc(t('restoreCells'))}</button><button class="button" data-action="clear-links" ${l.cellLinks?.length?'':'disabled'}>${esc(t('clearLinks'))}</button></div>`);
@@ -258,23 +428,26 @@ function renderInspector(savedSections=null){const l=active();if(isGroupLayer(l)
  $('#inspector').innerHTML=`<div class="inspector-head"><div class="eyebrow">${esc(t('properties'))}<span class="mono" style="float:right">${String(PATTERNS.indexOf(p)+1).padStart(2,'0')} / ${PATTERNS.length}</span></div><h1>${esc(label(p.name))}</h1><p>${esc(label(p.description))}</p><div class="actions"><button class="button" data-action="random">${icon('random')}${esc(t('random'))}</button>${ib('reset','reset','reset')}${ib('save-preset','star','savePreset')}</div></div>${details('image-source',t('imageSource'),imageSourceControls(l),false)}${details('geometry',t('geometry'),fields+(l.type==='barcode'?`<p class="helper">${esc(t('decorative'))}</p>`:''))}${extra}${details('appearance',t('appearance'),`<div class="field-pair">${colorField('color',t('color'),l.color)}${colorField('secondary',t('secondary'),l.secondary)}</div>${l.customMotif?`${checkbox('motifTint',t('motifTint'),l.motifTint,'layer')}<p class="helper">${esc(t('motifTintHint'))}</p>`:''}${numeric('opacity',t('opacity'),l.opacity,0,1,.01,'layer')}<div class="swatches">${palettes.map(([a,b])=>`<button class="swatch" data-action="palette" data-color="${a}" data-secondary="${b}" style="background:${a};--swatch-b:${b}" aria-label="${a} / ${b}" title="${a} / ${b}"></button>`).join('')}</div><button class="button image-color-launch" data-action="add-color-image">${icon('image')}${esc(t('importImageColors'))}</button>`)}${details('transform',t('transform'),numeric('rotation',t('rotation'),l.rotation,-180,180,1,'layer')+numeric('scale',t('scale'),l.scale,.1,2,.01,'layer')+numeric('offsetX',t('offsetX'),l.offsetX,-doc.width,doc.width,1,'layer')+numeric('offsetY',t('offsetY'),l.offsetY,-doc.height,doc.height,1,'layer'),false)}${canvasControls()}`;
  for(const el of $$('.inspector details'))if(openSections.has(el.dataset.section))el.open=openSections.get(el.dataset.section);
 }
-let pixelQualityPending=null;
-async function ensurePixelSourceQuality(){
- if(activePattern().type!=='pixel'||pixelQualityPending)return;
- const sources=resolveColorSources(doc,activePattern()).filter(source=>Math.max(source.colorMap?.width??0,source.colorMap?.height??0)<Math.min(1024,Math.max(source.imageWidth,source.imageHeight)));
- if(!sources.length)return;
- const generation=projectGeneration;pixelQualityPending=true;
- try{for(const source of sources){const image=source.image,analysis=await analyzeMaskImage(image);
-  if(generation!==projectGeneration)return;
-  if(!doc.layers.includes(source)||source.image!==image)continue;
-  const next=normalizeDocument({...doc,layers:doc.layers.map(l=>l===source?{...l,colorMap:analysis.colorMap}:l)});
-  if(new Blob([JSON.stringify(next)]).size>MAX_PROJECT_BYTES){toast('projectTooLarge');return;}
-  mutate(()=>{source.colorMap=analysis.colorMap;},false);
- }}catch(error){console.error(error);toast('maskInvalid');}finally{pixelQualityPending=null;}
+async function ensurePixelSourceQuality(targetLayer=activePattern()){
+ if(!targetLayer||!['pixel','redraw'].includes(targetLayer.type))return;
+ const sources=resolveColorSources(doc,targetLayer).filter(source=>source.colorMap&&Math.max(source.colorMap.width??0,source.colorMap.height??0)<Math.min(1024,Math.max(source.imageWidth,source.imageHeight)));
+ for(const source of sources){
+  const pending=sourceQualityJobs.get(source);if(pending){await pending;continue;}
+  const image=source.image,generation=projectGeneration,originalDoc=doc;
+  const task=(async()=>{
+   const analysis=await analyzeMaskImage(image);
+   if(generation!==projectGeneration||doc!==originalDoc||!doc.layers.includes(source)||source.image!==image)return;
+   const next=normalizeDocument({...doc,layers:doc.layers.map(layer=>layer===source?{...layer,colorMap:analysis.colorMap}:layer)});
+   if(new Blob([JSON.stringify(next)]).size>MAX_PROJECT_BYTES){toast('projectTooLarge');return;}
+   mutate(()=>{source.colorMap=analysis.colorMap;},false);
+  })();
+  sourceQualityJobs.set(source,task);
+  try{await task;}finally{if(sourceQualityJobs.get(source)===task)sourceQualityJobs.delete(source);}
+ }
 }
-function renderApp(){finishPointer();motionRun?.cancel();const sections=new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));const listScroll=$('#pattern-list')?.scrollTop??0,layerScroll=$('#layer-list')?.scrollTop??0,inspectorScroll=$('#pattern-list .active')?.dataset.pattern===active().type?($('#inspector')?.scrollTop??0):0;document.documentElement.lang={zh:'zh-Hant',en:'en',ja:'ja'}[lang];document.documentElement.dataset.theme=prefs.theme==='dark'?'dark':'light';$('#app').innerHTML=`<header class="topbar"><div class="brand"><img src="icon.svg" alt=""><span>C-TextureMaker</span><small>1.5.0</small></div><button class="document-name text-btn" data-action="rename" title="${esc(t('rename'))}">${icon('file')}<span>${esc(doc.name)}</span><small id="project-dirty" hidden title="${esc(t('unsaved'))}" aria-label="${esc(t('unsaved'))}">●</small></button><div class="top-actions">${ib('new','plus','newDoc')}${tb('open','open','open')}<div class="save-control">${tb('save','save','save')}<button class="icon-btn save-arrow" data-action="save-menu" aria-label="${esc(t('saveOptions'))}" title="${esc(t('saveOptions'))}" aria-expanded="false" aria-controls="save-menu">${icon('down')}</button><div id="save-menu" class="save-menu" hidden><button class="text-btn" data-action="save-as">${icon('save')}<span>${esc(t('saveAs'))}</span><kbd>Ctrl+Shift+S</kbd></button></div></div><span class="divider"></span>${ib('undo','undo','undo',past.length?'':'disabled')}${ib('redo','redo','redo',future.length?'':'disabled')}<span class="divider"></span>${ib('theme',prefs.theme==='dark'?'sun':'moon','theme')}<select class="language-select" data-action="language" aria-label="${esc(t('language'))}"><option value="zh" ${lang==='zh'?'selected':''}>繁體中文</option><option value="en" ${lang==='en'?'selected':''}>English</option><option value="ja" ${lang==='ja'?'selected':''}>日本語</option></select>${ib('help','help','help')}<button class="button primary export-top" data-action="export">${icon('export')}${esc(t('export'))}</button></div></header><main class="workspace ${focus?'focus':''}"><aside class="library" aria-label="${esc(t('library'))}"><div class="library-head"><div class="section-title">${esc(t('library'))}<span class="mono">${PATTERNS.length}</span></div><label class="search-box">${icon('search')}<input id="pattern-search" aria-label="${esc(t('search'))}" placeholder="${esc(t('search'))}" value="${esc(query)}"></label><nav class="category-tabs">${['all','radial','pattern','organic','technical'].map(c=>`<button data-action="category" data-category="${c}" class="${category===c?'active':''}">${esc(t(c))}</button>`).join('')}</nav></div><div id="pattern-list" class="pattern-list"></div><div class="library-bottom"><div class="section-title">${esc(t('layers'))}<div class="layer-add-actions">${ib('add-image-mask','image','addImageMask')}${ib('add-layer','plus','addLayer')}${ib('group-layers','folder','groupLayers')}${ib('ungroup-layers','folderUp','ungroupLayers')}</div></div><div id="layer-list" class="layer-list"></div><div class="layer-tools">${ib('layer-up','up','moveUp')}${ib('layer-down','down','moveDown')}${ib('duplicate','copy','duplicate')}${ib('delete','trash','remove')}</div></div><button class="preset-launch" data-action="presets">${icon('star')}<span>${esc(t('presets'))}</span>${icon('chevron')}</button></aside><section class="stage" aria-label="${esc(t('canvas'))}"><div class="stage-header"><span class="art-title" id="art-title">${esc(layerName(active()))}</span><button class="mono canvas-size-button" id="dimensions-label" data-action="canvas-size" title="${esc(t('editCanvasSize'))}" aria-label="${esc(t('editCanvasSize'))}">${doc.width} × ${doc.height}</button><div class="views"><button data-action="view-single" class="${repeat===1?'active':''}">${esc(t('single'))}</button><button data-action="view-repeat" class="${repeat===3?'active':''}">${esc(t('repeat'))}</button></div>${ib('edges','grid','tileEdges')}</div><div class="viewport" id="viewport" data-canvas-tool="${canvasTool}"><div id="brush-cursor" class="brush-cursor" hidden></div><svg id="connect-guide" class="connect-guide" aria-hidden="true" hidden><line/><circle r="6"/></svg><div class="stage-status">${esc(t('live'))}</div><div class="artboard-wrap" id="artboard-wrap"><div class="artboard-label" id="artboard-label"></div><div class="artboard" id="artboard"></div><div id="tile-grid" class="tile-grid" hidden></div><svg id="mask-overlay" class="mask-overlay" aria-label="${esc(t('maskTransform'))}" hidden></svg></div>${['dots','polygons'].includes(active().type)?`<div class="cell-edit-bar">${cellToolbar()}</div>`:''}</div><div class="stage-foot"><span class="stage-caption">${esc(t('vector'))}</span><div class="zoom-controls">${ib('tool-cursor','cursor','cursorTool',`aria-pressed="${canvasTool==='cursor'}"`)}${ib('tool-hand','hand','handTool',`aria-pressed="${canvasTool==='hand'}"`)}<span class="divider"></span>${ib('zoom-out','minus','zoomOut')}<span id="zoom-label" class="mono">100%</span>${ib('zoom-in','plus','zoomIn')}<span class="divider"></span>${ib('fit','fit','fit')}</div><div class="stage-focus">${ib('focus','expand',focus?'showPanel':'hidePanel')}</div></div></section><aside class="inspector" id="inspector" aria-label="${esc(t('properties'))}"></aside></main><footer class="statusbar"><span class="local-dot"></span><span>${esc(t('offline'))}</span><span class="line"></span><span id="save-status">${esc(t(saveState))}</span><span class="right"><span class="canvas-help">${esc(t('canvasHint'))}</span><span id="render-time" class="mono"></span><button type="button" id="alpha-status" class="pill alpha-status-toggle" data-action="toggle-alpha" aria-pressed="${doc.transparent}" aria-label="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}" title="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}">${esc(t(doc.transparent?'alpha':'solid'))}</button></span></footer>`;
+function renderApp(){finishPointer();motionRun?.cancel();const sections=new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));const listScroll=$('#pattern-list')?.scrollTop??0,layerScroll=$('#layer-list')?.scrollTop??0,inspectorScroll=$('#pattern-list .active')?.dataset.pattern===active().type?($('#inspector')?.scrollTop??0):0;document.documentElement.lang={zh:'zh-Hant',en:'en',ja:'ja'}[lang];document.documentElement.dataset.theme=prefs.theme==='dark'?'dark':'light';$('#app').innerHTML=`<header class="topbar"><div class="brand"><img src="icon.svg" alt=""><span>C-TextureMaker</span><small>1.6.0</small></div><button class="document-name text-btn" data-action="rename" title="${esc(t('rename'))}">${icon('file')}<span>${esc(doc.name)}</span><small id="project-dirty" hidden title="${esc(t('unsaved'))}" aria-label="${esc(t('unsaved'))}">●</small></button><div class="top-actions">${ib('new','plus','newDoc')}${tb('open','open','open')}<div class="save-control">${tb('save','save','save')}<button class="icon-btn save-arrow" data-action="save-menu" aria-label="${esc(t('saveOptions'))}" title="${esc(t('saveOptions'))}" aria-expanded="false" aria-controls="save-menu">${icon('down')}</button><div id="save-menu" class="save-menu" hidden><button class="text-btn" data-action="save-as">${icon('save')}<span>${esc(t('saveAs'))}</span><kbd>Ctrl+Shift+S</kbd></button></div></div><span class="divider"></span>${ib('undo','undo','undo',past.length?'':'disabled')}${ib('redo','redo','redo',future.length?'':'disabled')}<span class="divider"></span>${ib('theme',prefs.theme==='dark'?'sun':'moon','theme')}<select class="language-select" data-action="language" aria-label="${esc(t('language'))}"><option value="zh" ${lang==='zh'?'selected':''}>繁體中文</option><option value="en" ${lang==='en'?'selected':''}>English</option><option value="ja" ${lang==='ja'?'selected':''}>日本語</option></select>${ib('help','help','help')}<button class="button primary export-top" data-action="export">${icon('export')}${esc(t('export'))}</button></div></header><main class="workspace ${focus?'focus':''}"><aside class="library" aria-label="${esc(t('library'))}"><div class="library-head"><div class="section-title">${esc(t('library'))}<span class="mono">${PATTERNS.length}</span></div><label class="search-box">${icon('search')}<input id="pattern-search" aria-label="${esc(t('search'))}" placeholder="${esc(t('search'))}" value="${esc(query)}"></label><nav class="category-tabs">${['all','radial','pattern','organic','technical'].map(c=>`<button data-action="category" data-category="${c}" class="${category===c?'active':''}">${esc(t(c))}</button>`).join('')}</nav></div><div id="pattern-list" class="pattern-list"></div><div class="library-bottom"><div class="section-title">${esc(t('layers'))}<div class="layer-add-actions">${ib('add-image-mask','image','addImageMask')}${ib('add-layer','plus','addLayer')}${ib('group-layers','folder','groupLayers')}${ib('ungroup-layers','folderUp','ungroupLayers')}</div></div><div id="layer-list" class="layer-list"></div><div class="layer-tools">${ib('layer-up','up','moveUp')}${ib('layer-down','down','moveDown')}${ib('duplicate','copy','duplicate')}${ib('delete','trash','remove')}</div></div><button class="preset-launch" data-action="presets">${icon('star')}<span>${esc(t('presets'))}</span>${icon('chevron')}</button></aside><section class="stage" aria-label="${esc(t('canvas'))}"><div class="stage-header"><span class="art-title" id="art-title">${esc(layerName(active()))}</span><button class="mono canvas-size-button" id="dimensions-label" data-action="canvas-size" title="${esc(t('editCanvasSize'))}" aria-label="${esc(t('editCanvasSize'))}">${doc.width} × ${doc.height}</button><div class="views"><button data-action="view-single" class="${repeat===1?'active':''}">${esc(t('single'))}</button><button data-action="view-repeat" class="${repeat===3?'active':''}">${esc(t('repeat'))}</button></div>${ib('edges','grid','tileEdges')}</div><div class="viewport" id="viewport" data-canvas-tool="${canvasTool}"><div id="brush-cursor" class="brush-cursor" hidden></div><svg id="connect-guide" class="connect-guide" aria-hidden="true" hidden><line/><circle r="6"/></svg><div class="stage-status">${esc(t('live'))}</div><div class="artboard-wrap" id="artboard-wrap"><div class="artboard-label" id="artboard-label"></div><div class="artboard" id="artboard"></div><div id="tile-grid" class="tile-grid" hidden></div><svg id="mask-overlay" class="mask-overlay" aria-label="${esc(t('maskTransform'))}" hidden></svg></div>${['dots','polygons'].includes(active().type)?`<div class="cell-edit-bar">${cellToolbar()}</div>`:''}</div><div class="stage-foot"><span class="stage-caption">${esc(t('vector'))}</span><div class="zoom-controls">${ib('tool-cursor','cursor','cursorTool',`aria-pressed="${canvasTool==='cursor'}"`)}${ib('tool-hand','hand','handTool',`aria-pressed="${canvasTool==='hand'}"`)}<span class="divider"></span>${ib('zoom-out','minus','zoomOut')}<span id="zoom-label" class="mono">100%</span>${ib('zoom-in','plus','zoomIn')}<span class="divider"></span>${ib('fit','fit','fit')}</div><div class="stage-focus">${ib('focus','expand',focus?'showPanel':'hidePanel')}</div></div></section><aside class="inspector" id="inspector" aria-label="${esc(t('properties'))}"></aside></main><footer class="statusbar"><span class="local-dot"></span><span>${esc(t('offline'))}</span><span class="line"></span><span id="save-status">${esc(t(saveState))}</span><span class="right"><span class="canvas-help">${esc(t('canvasHint'))}</span><span id="render-time" class="mono"></span><button type="button" id="alpha-status" class="pill alpha-status-toggle" data-action="toggle-alpha" aria-pressed="${doc.transparent}" aria-label="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}" title="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}">${esc(t(doc.transparent?'alpha':'solid'))}</button></span></footer>`;
  if(nativeHost){$('.topbar').insertAdjacentHTML('beforeend',`<div class="window-controls">${ib('window-minimize','minus','minimize')}${ib('window-maximize','windowMaximize','maximize')}${ib('window-close','close','closeWindow')}</div>`);updateWindowState(windowMaximized);nativeHost.postMessage({type:'window',action:'theme',theme:prefs.theme==='dark'?'dark':'light'});nativeHost.postMessage({type:'window',action:'state'});}
- renderPatternList();renderLayers();renderInspector(sections);renderPreview();syncDirty();bindViewport();updateCanvasCursor();$('#pattern-list').scrollTop=listScroll;$('#layer-list').scrollTop=layerScroll;$('#inspector').scrollTop=inspectorScroll;void ensurePixelSourceQuality();
+ renderPatternList();renderLayers();renderInspector(sections);renderPreview();syncDirty();bindViewport();updateCanvasCursor();$('#pattern-list').scrollTop=listScroll;$('#layer-list').scrollTop=layerScroll;$('#inspector').scrollTop=inspectorScroll;void ensurePixelSourceQuality().catch(error=>console.error(error));
 }
 function updateWindowState(maximized){windowMaximized=Boolean(maximized);const button=$('[data-action=window-maximize]');if(button){button.innerHTML=icon(windowMaximized?'windowRestore':'windowMaximize');button.title=t(windowMaximized?'restoreWindow':'maximize');button.setAttribute('aria-label',button.title);}}
 function isDirty(){return savedSnapshot===null||JSON.stringify(doc)!==savedSnapshot;}
@@ -283,20 +456,20 @@ function syncHistory(){syncDirty();const u=$('[data-action=undo]'),r=$('[data-ac
 function push(before){if(JSON.stringify(doc)===before)return;past.push(before);let budget=past.reduce((n,s)=>n+s.length,0);while(past.length>1&&(past.length>60||budget>24*1024*1024))budget-=past.shift().length;future=[];syncHistory();autosave();}
 function flush(){if(pendingBefore!==null){const b=pendingBefore;pendingBefore=null;push(b);}}
 function mutate(fn,render=true){finishPointer();flush();connectStart=null;const before=JSON.stringify(doc);fn();push(before);if(render)renderApp();else schedulePreview();}
-function historyMove(direction){finishPointer();flush();connectStart=null;const from=direction==='undo'?past:future,to=direction==='undo'?future:past;if(!from.length)return;to.push(JSON.stringify(doc));doc=JSON.parse(from.pop());syncLayerSelection();renderApp();autosave();}
+function historyMove(direction){finishPointer();cancelAllRedrawJobs();flush();connectStart=null;const from=direction==='undo'?past:future,to=direction==='undo'?future:past;if(!from.length)return;to.push(JSON.stringify(doc));doc=JSON.parse(from.pop());syncLayerSelection();renderApp();autosave();}
 function setSaveState(key){saveState=key;const status=$('#save-status');if(status)status.textContent=t(key);}
 function queueAutosave(snapshot,version){const write=()=>persistentStorage.setRecord('autosave',snapshot),task=autosaveQueue.then(write,write);autosaveQueue=task.then(()=>undefined,()=>undefined);task.then(okay=>{if(version===autosaveSequence)setSaveState(okay?'autosaved':'autosaveFailed');},()=>{if(version===autosaveSequence)setSaveState('autosaveFailed');});}
 function autosave(){syncDirty();if(!storageReady)return;clearTimeout(saveTimer);const version=++autosaveSequence;setSaveState('saving');saveTimer=setTimeout(()=>{saveTimer=0;queueAutosave(clone(doc),version);},350);}
 function persistAutosaveNow(){clearTimeout(saveTimer);saveTimer=0;if(!storageReady)return;const version=++autosaveSequence;setSaveState('saving');queueAutosave(clone(doc),version);}
 function toast(key,raw=false){clearTimeout(toastTimer);const el=$('#toast');el.textContent=raw?key:t(key);el.classList.add('show');toastTimer=setTimeout(()=>el.classList.remove('show'),3000);}
 function schedulePreview(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;renderPreview();});}
-function renderPreview(){const start=performance.now(),rgb=activePattern().color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160;$('#artboard').style.setProperty('--checker1',bright?'#424242':'#ffffff');$('#artboard').style.setProperty('--checker2',bright?'#373737':'#f0f0f0');try{$('#artboard').innerHTML=renderSVG(doc,{preview:true,repeat});}catch(e){console.error(e);toast('exportError');return;}const elapsed=performance.now()-start;$('#render-time').textContent=`${Math.round(elapsed)} ms`;$('#dimensions-label').textContent=`${doc.width} × ${doc.height}`;$('#artboard-label').textContent=`${doc.width} × ${doc.height}${repeat===3?' / 3 × 3':''} · ${doc.seamless?t('seamless'):t('single')}`;const alphaStatus=$('#alpha-status'),alphaStatusTitle=t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid');alphaStatus.textContent=t(doc.transparent?'alpha':'solid');alphaStatus.setAttribute('aria-pressed',String(doc.transparent));alphaStatus.setAttribute('aria-label',alphaStatusTitle);alphaStatus.title=alphaStatusTitle;$('#tile-grid').hidden=!(repeat===3&&tileEdges);syncPixelInspector();fitLayout();}
+function renderPreview(){const start=performance.now(),rgb=activePattern().color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160;$('#artboard').style.setProperty('--checker1',bright?'#424242':'#ffffff');$('#artboard').style.setProperty('--checker2',bright?'#373737':'#f0f0f0');try{$('#artboard').innerHTML=renderSVG(doc,{preview:true,repeat});syncRedrawSelection();}catch(e){console.error(e);toast('exportError');return;}const elapsed=performance.now()-start;$('#render-time').textContent=`${Math.round(elapsed)} ms`;$('#dimensions-label').textContent=`${doc.width} × ${doc.height}`;$('#artboard-label').textContent=`${doc.width} × ${doc.height}${repeat===3?' / 3 × 3':''} · ${doc.seamless?t('seamless'):t('single')}`;const alphaStatus=$('#alpha-status'),alphaStatusTitle=t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid');alphaStatus.textContent=t(doc.transparent?'alpha':'solid');alphaStatus.setAttribute('aria-pressed',String(doc.transparent));alphaStatus.setAttribute('aria-label',alphaStatusTitle);alphaStatus.title=alphaStatusTitle;$('#tile-grid').hidden=!(repeat===3&&tileEdges);syncPixelInspector();fitLayout();}
 function fitLayout(){const vp=$('#viewport');if(!vp)return;const rect=vp.getBoundingClientRect(),base=Math.min((rect.width-82)/(doc.width*repeat),(rect.height-76)/(doc.height*repeat));const unit=Math.max(.025,base)*zoom;const art=$('#artboard'),wrap=$('#artboard-wrap');art.style.width=`${doc.width*repeat*unit}px`;art.style.height=`${doc.height*repeat*unit}px`;wrap.style.transform=`translate(calc(-50% + ${pan.x}px),calc(-50% + ${pan.y}px))`;$('#zoom-label').textContent=`${Math.round(unit*100)}%`;if(lastCanvasPoint)updateBrushCursor(lastCanvasPoint);updateConnectGuide();updateMaskOverlay();}
 function fit(){finishPointer();zoom=1;pan={x:0,y:0};fitLayout();}
 window.addEventListener('resize',fitLayout);
 
-document.addEventListener('input',e=>{if(!storageReady)return;const el=e.target;if(el.id==='pattern-search'){query=el.value;renderPatternList();return;}if(el.dataset.pixelColor!==undefined){setPixelColor(el,false);return;}if(!el.dataset.target)return;setField(el,false);});
-document.addEventListener('change',e=>{if(!storageReady)return;const el=e.target;if(el.dataset.pixelColor!==undefined){setPixelColor(el,true);return;}if(el.dataset.target){setField(el,true);return;}if(el.dataset.action==='language'){lang=el.value;t=translator(lang);prefs.lang=lang;store.set('ctm.preferences',prefs);renderApp();}if(el.dataset.action==='size-preset'&&el.value!=='custom'){const [w,h]=el.value.split(',').map(Number);mutate(()=>{doc.width=w;doc.height=h;if(doc.aspectRatio)doc.aspectRatio=[w,h];});fit();}if(el.dataset.action==='edit-mode-select')setEditMode(el.value);if(el.dataset.action==='image-mode')setImageMode(el.dataset.id,el.value);if(el.dataset.action==='aspect-lock')mutate(()=>{doc.aspectRatio=el.checked?[doc.width,doc.height]:null;});});
+document.addEventListener('input',e=>{if(!storageReady)return;const el=e.target;if(el.id==='pattern-search'){query=el.value;renderPatternList();return;}if(el.dataset.pixelColor!==undefined){setPixelColor(el,false);return;}if(el.dataset.redrawPalette!==undefined){setRedrawPaletteColor(el,false);return;}if(el.id==='redraw-region-color'){setRedrawRegionColor(el,false);return;}if(el.id==='redraw-tool-color'){setRedrawToolColor(el);return;}if(!el.dataset.target)return;setField(el,false);});
+document.addEventListener('change',e=>{if(!storageReady)return;const el=e.target;if(el.dataset.pixelColor!==undefined){setPixelColor(el,true);return;}if(el.dataset.redrawPalette!==undefined){setRedrawPaletteColor(el,true);return;}if(el.id==='redraw-region-color'){setRedrawRegionColor(el,true);return;}if(el.id==='redraw-tool-color'){setRedrawToolColor(el);return;}if(el.id==='redraw-region-visible'){setRedrawRegionVisible(el.checked);return;}if(el.dataset.target){setField(el,true);return;}if(el.dataset.action==='language'){lang=el.value;t=translator(lang);prefs.lang=lang;store.set('ctm.preferences',prefs);renderApp();}if(el.dataset.action==='size-preset'&&el.value!=='custom'){const [w,h]=el.value.split(',').map(Number);mutate(()=>{doc.width=w;doc.height=h;if(doc.aspectRatio)doc.aspectRatio=[w,h];});fit();}if(el.dataset.action==='edit-mode-select')setEditMode(el.value);if(el.dataset.action==='image-mode')setImageMode(el.dataset.id,el.value);if(el.dataset.action==='aspect-lock')mutate(()=>{doc.aspectRatio=el.checked?[doc.width,doc.height]:null;});});
 function setPixelColor(el,finish){
  const l=active();if(l.type!=='pixel'||!/^#[0-9a-f]{6}$/i.test(el.value))return;
  if(pendingBefore===null)pendingBefore=JSON.stringify(doc);
@@ -312,13 +485,13 @@ function setField(el,finish){
   if(finish){prefs.brushSize=brushSize;store.set('ctm.preferences',prefs);}if(lastCanvasPoint)updateBrushCursor(lastCanvasPoint);return;
  }
  const key=el.dataset.key,target=el.dataset.target,obj=target==='doc'?doc:target==='layer'?active():target==='group'?doc.layers.find(layer=>layer.id===el.dataset.id&&isGroupLayer(layer)):active().params;if(!obj)return;let v;
- if(el.type==='checkbox')v=el.checked;else if(el.type==='range'||el.type==='number'){if(el.value===''||!Number.isFinite(el.valueAsNumber))return;const step=Number(el.step)||1;v=clamp(Math.round(el.valueAsNumber/step)*step,Number(el.min),Number(el.max));v=Number(v.toFixed(4));}else {v=el.value;if(['color','secondary','background','shadowColor'].includes(key)&&!/^#[0-9a-f]{6}$/i.test(v)){if(finish)el.value=obj[key];return;}if(target==='params'){const c=pattern(active().type).controls.find(c=>c.key===key);const option=c?.options?.find(o=>String(o.value)===v);if(option)v=option.value;}}
- if(pendingBefore===null)pendingBefore=JSON.stringify(doc);if(active().type==='pixel'&&target==='params'&&key==='paletteMode'&&v==='custom')active().pixelPalette=[...getPixelData(doc,active()).palette];connectStart=null;if(target==='params'&&key==='shape')active().customMotif=null;if(target==='doc'&&['width','height'].includes(key)){Object.assign(doc,resizeCanvas(doc.width,doc.height,key,v,doc.aspectRatio));syncCanvasFields(finish?null:el);v=doc[key];}else if(target==='group'&&key==='name')obj[key]=String(v).replace(/[\u0000-\u001f\u007f-\u009f]/g,'').trim().slice(0,80)||obj[key];else obj[key]=v;syncDirty();
+ if(el.type==='checkbox')v=el.checked;else if(el.type==='range'||el.type==='number'){if(el.value===''||!Number.isFinite(el.valueAsNumber))return;const step=Number(el.step)||1;v=clamp(Math.round(el.valueAsNumber/step)*step,Number(el.min),Number(el.max));v=Number(v.toFixed(4));}else {v=el.value;if(['color','secondary','background','shadowColor','lineColor'].includes(key)&&!/^#[0-9a-f]{6}$/i.test(v)){if(finish)el.value=obj[key];return;}if(target==='params'){const c=pattern(active().type).controls.find(c=>c.key===key);const option=c?.options?.find(o=>String(o.value)===v);if(option)v=option.value;}}
+ if(pendingBefore===null)pendingBefore=JSON.stringify(doc);if(active().type==='pixel'&&target==='params'&&key==='paletteMode'&&v==='custom')active().pixelPalette=[...getPixelData(doc,active()).palette];if(active().type==='redraw'&&target==='params'&&key==='paletteMode'&&v==='custom'&&!active().redrawPalette?.length)active().redrawPalette=[...getRedrawPalette(active())];if(target==='params'&&active().type==='redraw'&&key==='detail')cancelRedrawJob(active().id);if((target==='layer'&&key==='imageSource')||(target==='layer'&&isImageMaskLayer(active()))||(target==='doc'&&['width','height','seed'].includes(key)))cancelAllRedrawJobs();connectStart=null;if(target==='params'&&key==='shape')active().customMotif=null;if(target==='doc'&&['width','height'].includes(key)){Object.assign(doc,resizeCanvas(doc.width,doc.height,key,v,doc.aspectRatio));syncCanvasFields(finish?null:el);v=doc[key];}else if(target==='group'&&key==='name')obj[key]=String(v).replace(/[\u0000-\u001f\u007f-\u009f]/g,'').trim().slice(0,80)||obj[key];else obj[key]=v;syncDirty();
  if(isImageMaskLayer(active())){for(const output of $$('[data-mask-threshold]'))output.textContent=active().threshold;for(const button of $$('[data-action=mask-invert]'))button.setAttribute('aria-pressed',String(active().invert));}
- $$(`[data-target="${target}"][data-key="${key}"]`).forEach(other=>{if(other!==el){if(other.type==='checkbox')other.checked=v;else other.value=v;}});schedulePreview();if(finish){flush();if(target==='group'&&key==='name'){renderLayers();renderInspector();$('#art-title').textContent=layerName(active());}if(target==='params'&&(el.tagName==='SELECT'||el.type==='checkbox'||key==='diagonals'))renderInspector();if(target==='doc'&&['width','height'].includes(key))fit();if(target==='layer'&&key==='imageSource'){renderInspector();void ensurePixelSourceQuality();}}
+ $$(`[data-target="${target}"][data-key="${key}"]`).forEach(other=>{if(other!==el){if(other.type==='checkbox')other.checked=v;else other.value=v;}});schedulePreview();if(finish){flush();if(target==='group'&&key==='name'){renderLayers();renderInspector();$('#art-title').textContent=layerName(active());}if(target==='params'&&(el.tagName==='SELECT'||el.type==='checkbox'||key==='diagonals'))renderInspector();if(target==='doc'&&['width','height'].includes(key))fit();if(target==='layer'&&key==='imageSource'){renderInspector();void ensurePixelSourceQuality().catch(error=>console.error(error));}}
 }
 
-document.addEventListener('click',async e=>{if(!storageReady)return;const card=e.target.closest('[data-pattern]');if(card){const type=card.dataset.pattern;mutate(()=>{const l=activePattern(),fresh=switchLayerPattern(l,type);doc.layers[doc.layers.indexOf(l)]=fresh;setLayerSelection([fresh.id]);});return;}
+document.addEventListener('click',async e=>{if(!storageReady)return;const card=e.target.closest('[data-pattern]');if(card){const type=card.dataset.pattern;mutate(()=>{const l=activePattern();cancelRedrawJob(l.id);redrawSnapshotSignatures.delete(l.id);selectedRedrawRegion=null;const fresh=switchLayerPattern(l,type);doc.layers[doc.layers.indexOf(l)]=fresh;setLayerSelection([fresh.id]);});return;}
  const row=e.target.closest('.layer[data-layer-id]');if(row&&!e.target.closest('button,input,select,textarea,[data-action],.mask-layer-controls')){selectLayer(row.dataset.layerId,{toggle:e.ctrlKey||e.metaKey,range:e.shiftKey});return;}
  if(!e.target.closest('.save-control'))closeSaveMenu();
  const b=e.target.closest('[data-action]');if(!b||b.tagName==='SELECT')return;const a=b.dataset.action;
@@ -339,7 +512,14 @@ document.addEventListener('click',async e=>{if(!storageReady)return;const card=e
  else if(a==='rename')nameDialog('projectName',doc.name,name=>mutate(()=>{doc.name=name;}));
  else if(a==='export')exportDialog();
  else if(a==='help')helpDialog();
- else if(a==='close-dialog')closeDialog();
+ else if(a==='close-dialog'){if(redrawConfirmResolve)resolveRedrawConfirmation(false);else closeDialog();}
+  else if(a==='redraw-cancel-generate')resolveRedrawConfirmation(false);
+  else if(a==='redraw-confirm-generate')resolveRedrawConfirmation(true);
+  else if(a==='redraw-import')chooseImageMask(null,'color');
+  else if(a==='redraw-generate')await generateSelectedRedraw();
+  else if(a==='redraw-mode')mutate(()=>{active().params.mode=b.dataset.mode;});
+  else if(a==='redraw-edit-mode'){redrawEditMode=b.dataset.mode;renderRedrawInspector();}
+  else if(a==='redraw-restore')mutate(()=>{const layer=active();cancelRedrawJob(layer.id);layer.redrawEdits={};selectedRedrawRegion=null;});
  else if(a==='random')mutate(()=>{doc.seed=1+Math.floor(Math.random()*999998);const l=active();if(!['contour','barcode','ticks','rays'].includes(l.type)){const cs=pattern(l.type).controls.filter(c=>c.type==='range'&&c.key!=='strokeWidth'&&!/color/i.test(c.key));for(const c of cs.slice(0,3)){const step=c.step??1,base=pattern(l.type).defaults[c.key],randomMax=base>c.min?Math.min(c.max,c.min+(base-c.min)*2.5):c.max,span=randomMax-c.min;l.params[c.key]=clamp(Math.round((c.min+span*(.15+Math.random()*.65))/step)*step,c.min,c.max);}}});
  else if(a==='reset')mutate(()=>{const l=active(),fresh=resetLayerPattern(l);doc.layers[doc.layers.indexOf(l)]=fresh;});
  else if(a==='view-single'||a==='view-repeat'){repeat=a==='view-single'?1:3;fit();renderApp();}
@@ -350,14 +530,14 @@ document.addEventListener('click',async e=>{if(!storageReady)return;const card=e
  else if(a==='focus'){focus=!focus;renderApp();fit();}
  else if(a==='select-layer')selectLayer(b.dataset.id,{toggle:e.ctrlKey||e.metaKey,range:e.shiftKey});
  else if(a==='toggle-group')toggleGroup(b.dataset.id);
- else if(a==='image-source'){const layer=activePattern();if(['all','below','none'].includes(b.dataset.mode))mutate(()=>{layer.imageSource=b.dataset.mode;});}
+ else if(a==='image-source'){const layer=activePattern();if(['all','below','none'].includes(b.dataset.mode)){cancelRedrawJob(layer.id);mutate(()=>{layer.imageSource=b.dataset.mode;});}}
  else if(a==='group-layers')groupSelection();
  else if(a==='ungroup-layers')ungroupSelection();
- else if(a==='visibility')mutate(()=>{const l=doc.layers.find(l=>l.id===b.dataset.id);if(l)l.visible=!l.visible;});
+ else if(a==='visibility'){cancelAllRedrawJobs();mutate(()=>{const l=doc.layers.find(l=>l.id===b.dataset.id);if(l)l.visible=!l.visible;});}
  else if(a==='add-layer')addPatternLayer();
  else if(a==='duplicate')duplicateSelectedLayers();
  else if(a==='delete')deleteSelectedLayers();
- else if(a==='layer-up'||a==='layer-down')moveSelectedLayers(a==='layer-up'?'up':'down');
+ else if(a==='layer-up'||a==='layer-down'){cancelAllRedrawJobs();moveSelectedLayers(a==='layer-up'?'up':'down');}
  else if(a==='palette')mutate(()=>{active().color=b.dataset.color;active().secondary=b.dataset.secondary;});
  else if(a==='presets')presetsDialog();
  else if(a==='save-preset'){const target=isGroupLayer(active())?activePattern():active();nameDialog('presetName',layerName(target),name=>{const arr=[...savedPresets,createUserPreset(doc,target.id,{id:uid(),name})].slice(-40);persistPresets(arr).then(okay=>toast(okay?'presetSaved':'saveFailed'));});}
@@ -414,7 +594,7 @@ function updateBrushCursor(point){
 }
 function finishPointer(){
  const state=pointer;pointer=null;if(!state)return;
- if(state.mode==='cell'||state.mode==='mask')push(state.before);
+ if(state.mode==='cell'||state.mode==='mask'||state.mode==='redraw')push(state.before);
  state.viewport.classList.remove('panning');if(state.viewport.hasPointerCapture(state.id))state.viewport.releasePointerCapture(state.id);
 }
 function captureCellCenters(){
@@ -489,6 +669,10 @@ function bindViewport(){
   finishPointer();flush();const common={viewport:vp,id:e.pointerId};
   if(space||canvasTool==='hand'||e.button===1){pointer={...common,mode:'pan',x:e.clientX,y:e.clientY,px:pan.x,py:pan.y};vp.classList.add('panning');}
   else if(beginMaskGesture(e,common)){/* The selected image moves independently of the artwork. */}
+  else if(active().type==='redraw'&&e.target.closest('#artboard')){
+   const path=e.target.closest('[data-redraw-region]'),layer=path?doc.layers.find(item=>item.id===(path.dataset.layer||selected)):null;
+   if(layer&&layer.id===selected&&layer.type==='redraw'){const before=JSON.stringify(doc);if(applyRedrawRegionClick(layer,path.dataset.redrawRegion))pointer={...common,mode:'redraw',before};}
+  }
   else if(editableCells()&&e.target.closest('#artboard')){
    const point={x:e.clientX,y:e.clientY};pointer={...common,mode:'cell',editMode,seen:new Set(),before:JSON.stringify(doc),cells:captureCellCenters(),radius:brushSize*canvasUnit()/2,tolerance:Math.max(8,Math.min(24,(active().params.spacing??active().params.cellSize)*canvasUnit()/2)),last:point};editAt(e,true);
   }
@@ -499,7 +683,7 @@ function bindViewport(){
   if(!pointer||pointer.id!==e.pointerId)return;
   if(pointer.mode==='pan'){pan={x:pointer.px+e.clientX-pointer.x,y:pointer.py+e.clientY-pointer.y};fitLayout();}
   else if(pointer.mode==='mask')dragImageMask(e);
-  else editAt(e);
+  else if(pointer.mode!=='redraw')editAt(e);
  });
  vp.addEventListener('pointerleave',()=>{lastCanvasPoint=null;$('#brush-cursor').hidden=true;updateConnectGuide();});
  for(const event of ['pointerup','pointercancel','lostpointercapture'])vp.addEventListener(event,e=>{if(pointer?.id===e.pointerId)finishPointer();});
@@ -528,7 +712,7 @@ async function readMaskImage(file){
  if(!mime)throw new Error('Invalid image format');
  return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(new Blob([bytes],{type:mime}));});
 }
-function chooseImageMask(id=null,mode=['lowpoly','pixel'].includes(activePattern().type)?'color':'mask'){
+function chooseImageMask(id=null,mode=['lowpoly','pixel','redraw'].includes(activePattern().type)?'color':'mask'){
  if(!id&&contentLayerCount()>=16){toast('maxLayers');return;}
  const layer=active();maskImportMode=mode;maskImportTarget=id;maskImportAnchorId=layer.id;maskImportParentId=parentOf(layer);maskImportPatternTarget=isPatternLayer(layer)?layer.id:null;maskImportDocument=doc;$('#file-image-mask').click();
 }
@@ -538,7 +722,7 @@ $('#file-image-mask').addEventListener('change',async e=>{
  maskImportTarget=null;maskImportPatternTarget=null;maskImportAnchorId=null;maskImportParentId=null;maskImportDocument=null;if(!file||!storageReady||doc!==originalDoc)return;
  await importImageLayer(file,target,mode,patternTarget,anchorId,parentId);
 });
-async function importImageLayer(file,target=null,mode=['lowpoly','pixel'].includes(activePattern().type)?'color':'mask',patternTarget=isPatternLayer(active())?active().id:null,anchorId=active().id,parentId=parentOf(active())){
+async function importImageLayer(file,target=null,mode=['lowpoly','pixel','redraw'].includes(activePattern().type)?'color':'mask',patternTarget=isPatternLayer(active())?active().id:null,anchorId=active().id,parentId=parentOf(active())){
  const generation=projectGeneration,ticket=++maskImportSequence;
  if(!storageReady||navigationBusy||closeRequestBusy)return false;
  toast('maskLoading');
@@ -559,6 +743,7 @@ async function importImageLayer(file,target=null,mode=['lowpoly','pixel'].includ
    if(mode==='color'&&targetLayer){targetLayer.imageSource='below';}
   }
   if(new Blob([JSON.stringify(next)]).size>MAX_PROJECT_BYTES){toast('projectTooLarge');return false;}
+  if(mode==='color')cancelAllRedrawJobs();
   lastPatternId=sourcePattern?.id??activePattern().id;
   mutate(()=>{doc=next;setLayerSelection([layer.id]);});toast('maskAdded');return true;
  }catch(error){console.error(error);toast('maskInvalid');return false;}
@@ -587,7 +772,7 @@ document.addEventListener('dragover',e=>{
 document.addEventListener('drop',e=>{
  if(!hasLayerDrag(e))return;
  const root=e.target.closest('[data-layer-drop-root]'),row=e.target.closest('.layer[data-layer-id]');if(!root&&!row)return;
- e.preventDefault();e.stopPropagation();clearLayerDropTargets();
+ e.preventDefault();e.stopPropagation();clearLayerDropTargets();cancelAllRedrawJobs();
  let ids=[];try{ids=JSON.parse(e.dataTransfer.getData(layerDragType));}catch{}
  $$('.layer.dragging').forEach(el=>el.classList.remove('dragging'));if(!Array.isArray(ids)||!ids.length)return;
  let targetId=null,position='root';
@@ -608,7 +793,7 @@ document.addEventListener('drop',async e=>{
  if(!fileDrag(e))return;e.preventDefault();clearFileDrop();
  if(!storageReady||$('dialog[open]')||dropBusy||navigationBusy||closeRequestBusy||motionRun)return;
  const files=Array.from(e.dataTransfer.files);if(!files.length)return;
- dropBusy=true;const generation=projectGeneration,mode=['lowpoly','pixel'].includes(activePattern().type)?'color':'mask',anchor=active(),anchorId=anchor.id,parentId=parentOf(anchor),patternTarget=isPatternLayer(anchor)?anchor.id:null;
+ dropBusy=true;const generation=projectGeneration,mode=['lowpoly','pixel','redraw'].includes(activePattern().type)?'color':'mask',anchor=active(),anchorId=anchor.id,parentId=parentOf(anchor),patternTarget=isPatternLayer(anchor)?anchor.id:null;
  try{for(const file of files){if(generation!==projectGeneration)break;if(!await importImageLayer(file,null,mode,patternTarget,anchorId,parentId))break;}}finally{dropBusy=false;}
 });
 async function setImageMode(id,mode){
@@ -617,7 +802,7 @@ async function setImageMode(id,mode){
  try{
   const colorMap=mode!=='mask'&&!layer.colorMap?(await analyzeMaskImage(image)).colorMap:layer.colorMap;
   if(ticket!==maskImportSequence||doc!==originalDoc||!doc.layers.includes(layer)||layer.image!==image)return;
-  mutate(()=>{layer.mode=mode;layer.colorMap=colorMap;});
+  cancelAllRedrawJobs();mutate(()=>{layer.mode=mode;layer.colorMap=colorMap;});
  }catch{toast('maskInvalid');renderApp();}
 }
 async function resetMaskThreshold(){
@@ -640,7 +825,7 @@ function updateMaskOverlay(){
 function beginMaskGesture(e,common){
  if(!isImageMaskLayer(active())||!isLayerVisible(doc,active())||repeat!==1)return false;
  const handle=e.target.closest('[data-mask-action]');if(!handle)return false;
- const layer=active(),rect=$('#artboard').getBoundingClientRect(),unit=canvasUnit(),point={x:(e.clientX-rect.left)/unit,y:(e.clientY-rect.top)/unit},geometry=imageMaskGeometry(layer,doc);
+ cancelAllRedrawJobs();const layer=active(),rect=$('#artboard').getBoundingClientRect(),unit=canvasUnit(),point={x:(e.clientX-rect.left)/unit,y:(e.clientY-rect.top)/unit},geometry=imageMaskGeometry(layer,doc);
  pointer={...common,mode:'mask',action:handle.dataset.maskAction,before:JSON.stringify(doc),layer,initial:{scale:layer.scale,rotation:layer.rotation,offsetX:layer.offsetX,offsetY:layer.offsetY},point,geometry,unit,rect};
  return true;
 }
@@ -673,7 +858,7 @@ function shapeLibraryDialog(){
  dialog(`<div class="eyebrow">C-TextureMaker / Shapes</div><h2>${esc(t('shapeLibrary'))}</h2><p class="intro">${esc(t('sharedShapeHint'))}</p><div class="shape-library-actions"><button class="button primary" data-action="import-shape" ${disabled}>${icon('plus')}${esc(t('uploadShape'))}</button><span class="mono">${sharedShapes.length} / 40</span></div>${shapeLibraryReady?'':`<p class="helper" role="alert">${esc(t('shapeLibraryReadFailed'))}</p>`}<div class="shape-grid">${sharedShapes.map(shape=>`<div class="shape-card ${shape.data===current?'active':''}"><button class="shape-apply" data-action="use-shape" data-id="${esc(shape.id)}" title="${esc(t('applyShape'))}: ${esc(shape.name)}"><span class="shape-preview"><img src="${esc(shape.data)}" alt=""></span><span class="shape-name" title="${esc(shape.name)}">${esc(shape.name)}</span></button><div class="shape-tools">${ib('rename-shape','pencil','renameShape',`data-id="${esc(shape.id)}" ${disabled}`)}${ib('remove-shape','trash','removeShape',`data-id="${esc(shape.id)}" ${disabled}`)}</div></div>`).join('')||`<p class="empty">${esc(t('noShapes'))}</p>`}</div>${current?`<div class="shape-current-actions">${!sharedShapes.some(s=>s.data===current)?`<button class="button" data-action="add-current-shape" ${disabled}>${icon('plus')}${esc(t('addCurrentShape'))}</button>`:''}<button class="button" data-action="clear-motif">${esc(t('clearMotif'))}</button></div>`:''}`,'shapes-modal');
 }
 function nameDialog(key,value,callback){const d=dialog(`<div class="eyebrow">C-TextureMaker</div><h2>${esc(t(key))}</h2><form id="name-form"><input id="name-input" class="text-input" aria-label="${esc(t(key))}" maxlength="80" required value="${esc(value)}"><div class="modal-footer"><button type="button" class="button" data-action="close-dialog">${esc(t('cancel'))}</button><button type="submit" class="button primary">${esc(t('add'))}</button></div></form>`);$('#name-form',d).addEventListener('submit',e=>{e.preventDefault();const name=$('#name-input',d).value.trim();if(!name)return;closeDialog();callback(name);});$('#name-input',d).select();}
-function replaceProject(parsed){finishPointer();pendingBefore=null;projectGeneration++;maskImportSequence++;doc=parsed;selected=doc.layers.find(isPatternLayer)?.id??doc.layers[0].id;selectedIds=new Set([selected]);selectionAnchor=selected;lastPatternId=selected;past=[];future=[];connectStart=null;savedSnapshot=JSON.stringify(doc);renderApp();fit();autosave();}
+function replaceProject(parsed){finishPointer();cancelAllRedrawJobs();redrawSnapshotSignatures.clear();selectedRedrawRegion=null;pendingBefore=null;projectGeneration++;maskImportSequence++;doc=parsed;selected=doc.layers.find(isPatternLayer)?.id??doc.layers[0].id;selectedIds=new Set([selected]);selectionAnchor=selected;lastPatternId=selected;past=[];future=[];connectStart=null;savedSnapshot=JSON.stringify(doc);renderApp();fit();autosave();}
 async function confirmUnsaved(){
  finishPointer();flush();if(!isDirty())return 'clean';if(unsavedPrompt)return unsavedPrompt;
  const d=dialog(`<div class="eyebrow">C-TextureMaker</div><h2>${esc(t('unsavedTitle'))}</h2><p class="intro">${esc(t('unsavedBody'))}</p><p class="unsaved-name">${esc(doc.name)}</p><div class="modal-footer"><button class="button" id="unsaved-cancel">${esc(t('cancel'))}</button><button class="button" id="unsaved-discard">${esc(t('discard'))}</button><button class="button primary" id="unsaved-save">${esc(t('save'))}</button></div>`,'unsaved-modal');
