@@ -1,14 +1,14 @@
 # C-TextureMaker
 
-An offline Windows pattern studio for creating transparent, seamless-ready assets from 16 adjustable procedural pattern families, with SVG and PNG export.
+An offline Windows pattern studio for creating transparent, seamless-ready assets from 17 adjustable pattern families, with SVG and PNG export.
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.4.1 public preview** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.1/C-TextureMaker-1.4.1-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.4.1) · [Source](https://github.com/ga643116/C-TextureMaker)
+**v1.5.0 public preview** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.5.0/C-TextureMaker-1.5.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.5.0) · [Source](https://github.com/ga643116/C-TextureMaker)
 
-[See what's new in 1.4.1](docs/releases/v1.4.1.md#english)
+[See what's new in 1.5.0](docs/releases/v1.5.0.md#english)
 
-**This update**: usability improvements and fixes for independent presets, unsaved changes warnings, image drag-and-drop and canvas aspect ratio locking.
+**This update**: Pixel conversion, editable palettes, native pixel-size export, and grouped layers with multi-selection and drag-and-drop management.
 
 https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
@@ -29,12 +29,12 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ![Seamless export animation](docs/media/seamless-export.gif)
 
-> **In development: 1.5.0** (not released) adds Pixel art with 2–256 colors, editable palettes, average/nearest sampling, dithering and native pixel-size export. Pattern sources can use all image layers, the image/group below, or no image. Multi-select, Ctrl+G grouping and drag-and-drop ordering let several effects share a base. The download above remains the published 1.4.1.
 
 ## Features
 
-- 16 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, and radial beams.
-- Adjust shape, color, rotation, scale, and position live. Use layers, presets, undo/redo, and .ctm projects. Projects support up to 16 layers; work and preferences are saved locally.
+- 17 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, radial beams, and Pixel art.
+- Pixel supports 2–256 colors, extracted/built-in/custom palettes, sampling and dithering, with canvas-size or native pixel-grid export. Use Ctrl+G to group, multi-select layers and drag to reorder or move into and out of groups.
+- Adjust shape, color, rotation, scale, and position live. Use layers, presets, undo/redo, and .ctm projects. Projects support up to 16 content layers plus 16 groups; work and preferences are saved locally.
 - Seamless mode arranges patterns to the canvas tile period. The 3 × 3 preview helps inspect seams; exports remain a single tile.
 - Separate cursor and hand tools; hold Space and drag to pan temporarily. Dot and polygon cells support adjustable paint/erase brushes with one undo per stroke.
 - Rename shared PNG/SVG shapes and reuse them across halftone, dots, polygon lattices and symbols. Each layer can keep the original colors or tint with its primary color while preserving transparency.
@@ -44,7 +44,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ## Download and launch
 
-1. Download [C-TextureMaker-1.4.1-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.4.1/C-TextureMaker-1.4.1-win-x64.zip) and extract the entire archive.
+1. Download [C-TextureMaker-1.5.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.5.0/C-TextureMaker-1.5.0-win-x64.zip) and extract the entire archive.
 2. Open C-TextureMaker.exe. Keep the app folder and DLL files beside it.
 3. Place the whole folder somewhere writable so the app can save work and preferences in the adjacent data folder.
 
@@ -56,17 +56,17 @@ Canvas dimensions range from 128 to 4096 px per side. PNG supports transparent o
 
 Procedural patterns export as vector SVG. Imported PNGs are embedded as raster images, so an SVG containing an imported PNG is not fully vector. Halftone, dots, polygon lattices and symbols share imported PNG/SVG shapes, keeping original colors or tinting with the layer's primary color while preserving transparency. The local library holds up to 40 shapes and 32 MiB in total, with a 4 MiB limit per file. Applied shapes are embedded in projects and survive library removal. Halftone also supports alpha masks. Decorative barcodes are not intended for scanning.
 
-Use the image button beside Layers to add a mask. It accepts PNG/JPG/WebP (up to 16 MiB) or SVG (up to 4 MiB), up to 8192 px per side. Dark areas are kept by default; transparent areas stay empty. Adjust threshold and inversion at any time. Select the image layer to move, scale, rotate, or flip it independently; drag its frame and handles in tile view. Masks apply to all pattern layers, multiple masks intersect, and existing cell edits remain intact. Source images are saved in .ctm projects and embedded as SVG masks; PNG exports retain the same effect. Image edges are not automatically made seamless; inspect them in the 3 × 3 preview.
+Use the image button beside Layers to add a mask. It accepts PNG/JPG/WebP (up to 16 MiB) or SVG (up to 4 MiB), up to 8192 px per side. Dark areas are kept by default; transparent areas stay empty. Adjust threshold and inversion at any time. Select the image layer to move, scale, rotate, or flip it independently; drag its frame and handles in tile view. Image mode scopes masks to the image or group below. Existing global-mask behavior is retained; multiple masks intersect, and existing cell edits remain intact. Source images are saved in .ctm projects and embedded as SVG masks; PNG exports retain the same effect. Image edges are not automatically made seamless; inspect them in the 3 × 3 preview.
 
 To remove a connection, connect the same two cells again. Esc cancels the start point.
 
-Image layers can switch between Black / white mask and Image colors while preserving their threshold settings. The topmost visible color layer colors all patterns: Low Poly samples a flat color per triangle; other patterns project the image through their shapes. Density, rotation and image transforms update the result live. Use Color from image under Appearance to add a color layer directly.
+Image layers can switch between Black / white mask, Image colors and Original image while preserving their threshold settings. Each pattern can use All layers, Image or No image. Image uses the nearest image or group below; several effects can share a base and stack in layer order. Low Poly samples a flat color per triangle; other patterns project the image through their shapes. Density, rotation and image transforms update the result live. Use Color from image under Appearance to add a color layer directly.
 
 Low Poly offers vertex density, shape variation, primary / secondary colors, gradient angle and color variation. Contour Depth shading adds inner / outer shadows with softness, distance, angle, color and opacity; turn it off to return to contour lines.
 
 Save project asks for a location once, then updates that file. Use the adjacent arrow or Ctrl+Shift+S for Save As. Opening a .ctm also sets its save destination. Each layer remembers every pattern's settings and cell edits, including across project saves; Reset affects only the current pattern.
 
-1.4.1 opens older projects. Projects with the new pattern, image colors or depth settings require 1.4.0 or later. Canvas aspect ratio settings require 1.4.1 or later.
+1.5.0 opens older projects and retains their image source bindings. Projects containing Pixel or groups require 1.5.0 or later.
 
 ## Build from source
 
