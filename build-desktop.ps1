@@ -154,54 +154,9 @@ if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
     throw "Desktop application manifest is missing: $manifestFile"
 }
 
-Add-Type -AssemblyName System.Drawing
-if (-not ("CTextureMakerNativeIconHandle" -as [type])) {
-    Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class CTextureMakerNativeIconHandle
-{
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool DestroyIcon(IntPtr handle);
-}
-'@
-}
-
-$bitmap = New-Object System.Drawing.Bitmap 64, 64
-$graphics = $null
-$backgroundBrush = $null
-$ringPen = $null
-$accentBrush = $null
-$hIcon = [IntPtr]::Zero
-$icon = $null
-$iconStream = $null
-try {
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-    $graphics.Clear([System.Drawing.Color]::Transparent)
-    $backgroundBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(24, 29, 52))
-    $graphics.FillEllipse($backgroundBrush, 2, 2, 60, 60)
-    $ringPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(70, 220, 200), 9)
-    $ringPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $ringPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $graphics.DrawArc($ringPen, 10, 10, 44, 44, 44, 272)
-    $accentBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(248, 190, 92))
-    $graphics.FillEllipse($accentBrush, 43, 24, 6, 6)
-
-    $hIcon = $bitmap.GetHicon()
-    $icon = [System.Drawing.Icon]::FromHandle($hIcon)
-    $iconStream = [IO.File]::Open($iconFile, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
-    $icon.Save($iconStream)
-}
-finally {
-    if ($iconStream) { $iconStream.Dispose() }
-    if ($icon) { $icon.Dispose() }
-    if ($hIcon -ne [IntPtr]::Zero) { [CTextureMakerNativeIconHandle]::DestroyIcon($hIcon) | Out-Null }
-    if ($accentBrush) { $accentBrush.Dispose() }
-    if ($ringPen) { $ringPen.Dispose() }
-    if ($backgroundBrush) { $backgroundBrush.Dispose() }
-    if ($graphics) { $graphics.Dispose() }
-    $bitmap.Dispose()
+# Keep the versioned logo icon instead of replacing it during each build.
+if (-not (Test-Path -LiteralPath $iconFile -PathType Leaf)) {
+    throw "Desktop application icon is missing: $iconFile"
 }
 
 $exePath = Join-Path $outputDir "C-TextureMaker.exe"
