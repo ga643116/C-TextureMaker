@@ -73,7 +73,11 @@ async function assertNoHorizontalOverflow(page,label){
  try{
   browser=await chromium.launch({channel:'msedge',headless:true});
   const context=await browser.newContext({viewport:{width:1440,height:960},acceptDownloads:true});
-  await context.addInitScript(()=>localStorage.setItem('ctm.preferences',JSON.stringify({lang:'zh',theme:'dark',motion:false})));
+  await context.addInitScript(()=>{
+   localStorage.setItem('ctm.preferences',JSON.stringify({lang:'zh',theme:'dark',motion:false}));
+   window.__screenPickCalls=0;window.__cancelScreenPick=false;
+   window.EyeDropper=class{async open(){window.__screenPickCalls++;if(window.__cancelScreenPick)throw new DOMException('Cancelled','AbortError');return {sRGBHex:'#123abc'};}};
+  });
   const origin='http://127.0.0.1:'+server.address().port+'/';
   const blockedRequests=[],pageErrors=[],workerURLs=[];
   await context.route('**/*',async route=>{
@@ -164,6 +168,52 @@ async function assertNoHorizontalOverflow(page,label){
   assert.equal(new Set(regionIds).size,regionIds.length,'generated region identifiers are unique');
   const firstId=regionIds[0],firstRegion=page.locator('#artboard svg [data-redraw-region="'+firstId+'"]');
 
+  await page.locator('[data-action="redraw-mode"][data-mode="outline"]').click();
+  assert.ok(await page.locator('#artboard [data-redraw-region]').evaluateAll(nodes=>nodes.every(node=>node.getAttribute('fill')==='none')),'outline mode hides region fills');
+  await page.locator('[data-action="redraw-mode"][data-mode="blocks"]').click();
+  const secondId=regionIds[1],secondRegion=page.locator('#artboard [data-redraw-region="'+secondId+'"]');
+  await firstRegion.dispatchEvent('pointermove');
+  assert.equal(await firstRegion.evaluate(node=>node.classList.contains('redraw-hover')),true,'hover reveals the region boundary');
+  await firstRegion.click({force:true});
+  await secondRegion.click({force:true,modifiers:['Control']});
+  assert.equal(await page.locator('#artboard .redraw-selected').count(),2,'Ctrl-click selects multiple regions');
+  await secondRegion.click({force:true,modifiers:['Control']});
+  assert.equal(await page.locator('#artboard .redraw-selected').count(),1,'Ctrl-click selected region deselects it');
+  await page.locator('#viewport').click({position:{x:8,y:65}});
+  assert.equal(await page.locator('#artboard .redraw-selected').count(),0,'blank canvas clears selection');
+  await firstRegion.click({force:true});await secondRegion.click({force:true,modifiers:['Control']});
+  await setColor(page,'#redraw-region-color','#331122');
+  assert.equal(await firstRegion.getAttribute('fill'),'#331122');assert.equal(await secondRegion.getAttribute('fill'),'#331122');
+  await page.locator('[data-action="undo"]').click();
+  assert.notEqual(await firstRegion.getAttribute('fill'),'#331122','bulk recolor is one undo step');
+
+  // Dragging a line color updates existing SVG nodes instead of rebuilding paths.
+  const lineInput='input[type="color"][data-target="params"][data-key="lineColor"]';
+  await revealField(page,page.locator(lineInput));
+  await page.evaluate(()=>{window.__lineNode=document.querySelector('#artboard [data-redraw-line-color]');});
+  assert.ok(await page.evaluate(()=>Boolean(window.__lineNode)));
+  const paint=await page.locator(lineInput).evaluate(node=>{
+   const start=performance.now();for(let n=0;n<80;n++){node.value='#'+(0x224400+n).toString(16);node.dispatchEvent(new Event('input',{bubbles:true}));}
+   return {elapsed:performance.now()-start,same:window.__lineNode===document.querySelector('#artboard [data-redraw-line-color]'),stroke:window.__lineNode.getAttribute('stroke')};
+  });
+  assert.equal(paint.same,true,'line color gestures preserve SVG geometry nodes');assert.equal(paint.stroke,'#22444f');
+  await page.locator(lineInput).dispatchEvent('change');
+  console.log('Line paint 80 input events:',Math.round(paint.elapsed),'ms');
+
+  // Test the product color-picker UI with a deterministic eyedropper stand-in.
+  await revealField(page,page.locator('#redraw-tool-color'));await page.locator('#redraw-tool-color').click();
+  await page.locator('.ctm-color-picker').waitFor({state:'visible'});
+  const sv=page.locator('.ctm-color-picker .cp-sv'),svBox=await sv.boundingBox();
+  await page.mouse.move(svBox.x+20,svBox.y+20);await page.mouse.down();await page.mouse.move(svBox.x+100,svBox.y+65,{steps:12});await page.mouse.up();
+  assert.match(await page.locator('#redraw-tool-color').inputValue(),/^#[0-9a-f]{6}$/);
+  await page.locator('.cp-pick').click();await page.waitForFunction(()=>document.querySelector('#redraw-tool-color')?.value==='#123abc');
+  assert.equal(await page.evaluate(()=>window.__screenPickCalls),1,'screen picker is invoked from the explicit button');
+  await page.evaluate(()=>window.__cancelScreenPick=true);await page.locator('.cp-pick').click();
+  await page.waitForFunction(()=>!document.querySelector('.cp-pick')?.disabled);
+  assert.equal(await page.locator('#redraw-tool-color').inputValue(),'#123abc','cancelling eyedropper preserves the prior color');
+  await page.screenshot({path:path.join(output,'shape-redraw-picker.png'),fullPage:true});
+  await page.locator('.cp-done').click();
+
   await page.locator('[data-action="redraw-edit-mode"][data-mode="recolor"]').click();
   await firstRegion.click({force:true});
   await setColor(page,'#redraw-region-color','#12ab34');
@@ -175,6 +225,11 @@ async function assertNoHorizontalOverflow(page,label){
   await page.locator('[data-action="redo"]').click();
   await page.waitForFunction(()=>document.querySelector('#redraw-region-visible')?.checked===false,{}, {timeout:10000});
   assert.equal(await page.locator('#artboard svg [data-redraw-region="'+firstId+'"]').count(),1,'hidden regions remain addressable in the editable preview');
+  await firstRegion.click({force:true});
+  await page.waitForFunction(()=>document.querySelector('#redraw-region-visible')?.checked===true);
+  await firstRegion.click({force:true});
+  await page.waitForFunction(()=>document.querySelector('#redraw-region-visible')?.checked===false);
+
   await page.locator('[data-action="redraw-edit-mode"][data-mode="select"]').click();
   await page.locator('#artboard svg [data-redraw-region="'+firstId+'"]').click({force:true});
   const visible=page.locator('#redraw-region-visible');if(!await visible.isChecked())await visible.check();
@@ -275,6 +330,49 @@ async function assertNoHorizontalOverflow(page,label){
   assert.deepEqual(regeneratedRedraw.redrawEdits,{},'confirming regeneration clears prior region edits');
   assert.ok(regeneratedRedraw.redrawData.regions.length>=2,'confirmed regeneration replaces the saved geometry');
 
+
+  // Existing geometry follows the image through the same controls as manual dragging.
+  await selectLayer(sourceId);
+  await setRange(page,'input[type="number"][data-target="layer"][data-key="offsetX"]',25);
+  const placed=await save();
+  assert.equal(placed.layers.find(layer=>layer.id===sourceId).offsetX,25);
+  assert.match(await page.locator('#artboard').innerHTML(),/matrix\(1 0 0 1 25 0\)/,'generated paths follow the moved source without regeneration');
+  const redrawPath=page.locator('#artboard [data-redraw-region]').first();
+  const beforeDrag=await redrawPath.evaluate(node=>{const m=node.getScreenCTM();return {x:m.e,y:m.f};});
+  const handle=await page.locator('#mask-overlay [data-mask-action="move"]').boundingBox();
+  await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await page.mouse.down();
+  await page.mouse.move(handle.x+handle.width/2+20,handle.y+handle.height/2+12,{steps:4});await page.mouse.up();
+  const afterDrag=await redrawPath.evaluate(node=>{const m=node.getScreenCTM();return {x:m.e,y:m.f};});
+  assert.ok(Math.abs(afterDrag.x-beforeDrag.x-20)<1&&Math.abs(afterDrag.y-beforeDrag.y-12)<1,'dragging the source moves generated shapes by the same on-screen distance');
+  await selectLayer(redrawLayerId);
+  assert.equal(await page.locator('[data-redraw-stale]').count(),0,'linked image movement does not incorrectly request regeneration');
+
+  // A project larger than 1 MiB formerly exhausted the 24 MiB undo budget.
+  const large=structuredClone(regenerated);large.name='Thirty-step undo regression';
+  const pixels=Buffer.alloc(512*512*4);for(let i=0;i<pixels.length;i+=4){pixels[i]=i%251;pixels[i+1]=(i>>8)%251;pixels[i+2]=(i>>16)%251;pixels[i+3]=255;}
+  large.layers.find(layer=>layer.id===sourceId).colorMap={width:512,height:512,rgba:pixels.toString('base64')};
+  assert.ok(Buffer.byteLength(JSON.stringify(large))>1024*1024);
+  await load(large,'redraw-large-history.ctm');
+  const opacity='input[type="number"][data-target="layer"][data-key="opacity"]';
+  for(let step=1;step<=30;step++)await setRange(page,opacity,1-step/100);
+  for(let step=1;step<=30;step++){
+   await page.locator('[data-action="undo"]').click();
+   assert.equal(Number(await page.locator(opacity).inputValue()),Number((.7+step/100).toFixed(2)),'undo step '+step);
+  }
+  assert.equal(await page.locator('[data-action="undo"]').isDisabled(),true,'exactly thirty actions retained after project load');
+  for(let step=1;step<=30;step++)await page.locator('[data-action="redo"]').click();
+  assert.equal(Number(await page.locator(opacity).inputValue()),.7,'all thirty actions can be redone');
+  await save();assert.equal(await isDirty(),'false');
+  await revealField(page,page.locator('#redraw-tool-color'));await page.locator('#redraw-tool-color').click();await page.locator('.cp-done').click();
+  assert.equal(await isDirty(),'false','opening and closing an unchanged tool color does not mark a saved project dirty');
+  await revealField(page,page.locator('input[type="color"][data-key="lineColor"]'));await page.locator('input[type="color"][data-key="lineColor"]').click();await page.locator('.cp-done').click();
+  assert.equal(await isDirty(),'false','opening and closing unchanged line color does not mark a saved project dirty');
+  await setSelect(page,'#p-paletteMode','original');await save();
+  const paletteSwatch=page.locator('input[data-redraw-palette]').first();await revealField(page,paletteSwatch);await paletteSwatch.click();await page.locator('.cp-done').click();
+  assert.equal(await page.locator('#p-paletteMode').inputValue(),'original','unchanged palette popover does not silently switch to custom');
+  assert.equal(await isDirty(),'false');
+
+  console.log('PASS outline mode, Ctrl multi-selection, deselect, toggle-hide, hover, shared color picker, linked movement and 30 large-project undo/redo steps');
   assert.deepEqual(blockedRequests,[],'the browser requested no remote resources');
   assert.deepEqual(pageErrors,[],'headless redraw flow completed without browser errors');
   console.log('PASS imported PNG redraw worker, region edits with undo/redo, custom settings, pattern/project roundtrip, transparent PNG and editable SVG');

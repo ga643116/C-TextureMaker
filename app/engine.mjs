@@ -11,6 +11,7 @@ import { renderContours } from './contours.mjs';
 import { renderLowPoly } from './low-poly.mjs';
 import { createPixelArtEngine } from './pixel-art.mjs';
 import { renderRedraw, normalizeRedrawData, normalizeRedrawEdits } from './shape-redraw.mjs';
+import {normalizeRedrawPlacement,capturePlacement,placementMatrix,multiplyMatrix,layerMatrix,matrixBounds,matrixAttribute} from './redraw-placement.mjs';
 import { canonicalizeLayers, isGroupLayer, isLayerVisible } from './layer-tree.mjs';
 
 const tr = (zh, en, ja) => ({ zh, en, ja });
@@ -26,7 +27,7 @@ const O = {
 };
 Object.assign(O,{auto:tr('自動量化','Auto quantize','自動量子化'),grayscale:tr('灰階','Grayscale','グレースケール'),retro:tr('復古綠四色','Retro green','レトログリーン'),custom:tr('自訂色盤','Custom palette','カスタムパレット'),canvas:tr('畫布尺寸','Canvas size','キャンバスサイズ'),longEdge:tr('長邊','Long edge','長辺'),width:tr('寬度','Width','幅'),block:tr('像素塊尺寸','Pixel block size','ピクセルブロックサイズ'),average:tr('平均','Average','平均'),nearest:tr('最近鄰','Nearest','ニアレスト'),bilinear:tr('雙線性','Bilinear','バイリニア'),oklab:tr('OKLab','OKLab','OKLab'),rgb:tr('RGB','RGB','RGB'),bayer4:tr('Bayer 4×4','Bayer 4×4','Bayer 4×4'),'floyd-steinberg':tr('Floyd–Steinberg','Floyd–Steinberg','Floyd–Steinberg')});
 Object.assign(L,{detail:tr('分塊細碎程度','Region detail','分割の細かさ'),straightness:tr('直邊程度','Edge straightness','直線化の強さ'),redrawLines:tr('保留線稿','Extract line art','線画を抽出'),lineWidth:tr('線稿線寬','Line art width','線画の太さ'),lineColor:tr('線稿顏色','Line art color','線画の色'),outlineWidth:tr('外輪廓線寬','Outer outline width','外枠の太さ')});
-Object.assign(O,{blocks:tr('色塊','Color blocks','色面'),three:tr('三色','Three colors','3色'),original:tr('原色','Original colors','元の色'),poster:tr('經典剪紙','Paper cut','切り紙'),ocean:tr('海洋藍','Ocean','オーシャン'),forest:tr('森林綠','Forest','フォレスト')});
+Object.assign(O,{blocks:tr('色塊','Color blocks','色面'),three:tr('三色','Three colors','3色'),outline:tr('輪廓線','Outlines','輪郭線'),original:tr('原色','Original colors','元の色'),poster:tr('經典剪紙','Paper cut','切り紙'),ocean:tr('海洋藍','Ocean','オーシャン'),forest:tr('森林綠','Forest','フォレスト')});
 const control = (key, type, min, max, step = 1, values = null, labelKey = key) => ({
   key, label: L[labelKey] ?? tr(labelKey, labelKey, labelKey), type,
   ...(type === 'range' ? { min, max, step } : {}),
@@ -51,7 +52,7 @@ export const PATTERNS = [
   make('contour','organic',tr('等高線','Contour field','等高線'),tr('由種子控制的流動地形與有機等高線。','Seeded flowing terrain and organic contour lines.','シードで変化する流れる地形と有機的な等高線。'),{peaks:3,terrainScale:1.75,sampling:72,levels:18,octaves:4,roughness:0.65,strokeWidth:1.5,depth:false,shadowRange:16,shadowOffset:10,shadowAngle:45,shadowColor:'#123e3b',shadowOpacity:0.35,shadowSide:'outer'},[R('peaks',1,32),R('terrainScale',0.25,8,0.05),R('sampling',72,256),R('levels',2,64),R('octaves',1,8),R('roughness',0,1,0.01),R('strokeWidth',0.25,256,0.25),T('depth'),S('shadowSide',['outer','inner']),R('shadowRange',0,128),R('shadowOffset',0,256),R('shadowAngle',-180,180),C('shadowColor'),R('shadowOpacity',0,1,0.01)]),
   make('lowpoly','pattern',tr('低多邊形','Low Poly','ローポリ'),tr('不規則三角面與色彩漸層，可使用圖片逐面取色。','Irregular triangular facets with gradients or sampled image colors.','不規則な三角面にグラデーションや画像の色を適用。'),{points:180,jitter:0.85,colorVariation:0.18,gradientAngle:0},[R('points',16,3000),R('jitter',0,1,0.01),R('colorVariation',0,1,0.01),R('gradientAngle',-180,180)]),
   make('pixel','pattern',tr('像素圖樣','Pixel art','ピクセルアート'),tr('以來源圖片色彩或自訂色盤生成清晰像素格。','Build crisp pixel cells from an image source or a custom palette.','画像またはカスタムパレットから鮮明なピクセルセルを生成。'),{sizeMode:'longEdge',blockSize:8,pixelCount:64,colorCount:16,resample:'average',colorDistance:'oklab',dither:'none',ditherStrength:0.6,brightness:0,contrast:0,saturation:0,alphaThreshold:0.5,paletteMode:'auto',outputSize:'canvas'},[S('sizeMode',['longEdge','width','block']),R('blockSize',1,256),R('pixelCount',4,512),R('colorCount',2,256),S('resample',['average','nearest','bilinear']),S('colorDistance',['oklab','rgb']),S('dither',['none','bayer4','floyd-steinberg']),R('ditherStrength',0,1,0.05),R('brightness',-1,1,0.05),R('contrast',-1,1,0.05),R('saturation',-1,1,0.05),R('alphaThreshold',0,1,0.01),S('paletteMode',['auto','grayscale','retro','custom']),S('outputSize',['canvas','grid'])]),
-  make('redraw','pattern',tr('形狀重繪','Shape redraw','形状再描画'),tr('將圖片重新分割為可編輯的剪影色塊與線稿。','Redraw images as editable color regions and line art.','画像を編集可能な色面と線画に再描画。'),{detail:55,straightness:2,mode:'blocks',paletteMode:'original',lines:false,lineWidth:1,lineColor:'#202020',outlineWidth:0},[R('detail',0,100),R('straightness',0,12,0.25),S('mode',['blocks','three']),S('paletteMode',['original','poster','ocean','forest','custom']),T('lines','redrawLines'),R('lineWidth',0,12,0.25),C('lineColor'),R('outlineWidth',0,12,0.25)]),
+  make('redraw','pattern',tr('形狀重繪','Shape redraw','形状再描画'),tr('將圖片重新分割為可編輯的剪影色塊與線稿。','Redraw images as editable color regions and line art.','画像を編集可能な色面と線画に再描画。'),{detail:55,straightness:2,mode:'blocks',paletteMode:'original',lines:false,lineWidth:1,lineColor:'#202020',outlineWidth:0},[R('detail',0,100),R('straightness',0,12,0.25),S('mode',['blocks','three','outline']),S('paletteMode',['original','poster','ocean','forest','custom']),T('lines','redrawLines'),R('lineWidth',0,12,0.25),C('lineColor'),R('outlineWidth',0,12,0.25)]),
   make('symbols','pattern',tr('符號陣列','Symbol array','シンボル配列'),tr('多種符號與聚焦、循環排列。','Symbol glyphs in uniform, radial or focused layouts.','各種シンボルを均一、放射状、焦点配置。'),{shape:'arrow',arrangement:'uniform',size:20,spacing:72,strokeWidth:2,roundness:0.2,shorten:0.1,filled:false},[S('shape',['arrow','slashes','chevron','bracket','cross','star','circle','square','diamond','triangle','hexagon','ring','heart']),S('arrangement',['uniform','radial','focus','cycle']),R('size',4,512),R('spacing',16,512),R('strokeWidth',0.25,256,0.25),R('roundness',0,1,0.01),R('shorten',0,0.8,0.01),T('filled')]),
   make('nested','radial',tr('巢狀多邊形','Nested polygons','入れ子多角形'),tr('旋轉漸變的同心多邊形。','Nested polygons with twist and optional color gradient.','ねじれと色の変化を備えた多角形の重なり。'),{sides:6,radius:420,radiusStep:28,count:12,twist:0,strokeWidth:2,gradient:true},[R('sides',3,64),R('radius',20,2048),R('radiusStep',2,512),R('count',1,256),R('twist',-180,180),R('strokeWidth',0.25,256,0.25),T('gradient')]),
   make('globe','radial',tr('經緯球體','Globe grid','地球グリッド'),tr('橢圓外框與經緯線。','An elliptical globe outline with longitude and latitude lines.','楕円の外枠と経線、緯線。'),{radiusX:360,radiusY:280,longitudes:12,latitudes:8,strokeWidth:2,tilt:0},[R('radiusX',40,2048),R('radiusY',40,2048),R('longitudes',2,128),R('latitudes',1,128),R('strokeWidth',0.25,256,0.25),R('tilt',-90,90)]),
@@ -62,9 +63,9 @@ export const PATTERNS = [
 export const SHAPE_PATTERNS = ['halftone','dots','polygons','symbols'];
 
 const patternById = new Map(PATTERNS.map(p => [p.id, p]));
-const PATTERN_SETTING_KEYS = ['opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','redrawData','redrawEdits','redrawPalette','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask','imageSource'];
+const PATTERN_SETTING_KEYS = ['opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','redrawData','redrawEdits','redrawPalette','redrawPlacement','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask','imageSource'];
 const patternSettingKeySet = new Set(PATTERN_SETTING_KEYS);
-const OPTIONAL_PATTERN_DEFAULTS={pixelPalette:[],imageSource:'auto',redrawData:null,redrawEdits:{},redrawPalette:[]};
+const OPTIONAL_PATTERN_DEFAULTS={pixelPalette:[],imageSource:'auto',redrawData:null,redrawEdits:{},redrawPalette:[],redrawPlacement:null};
 const settingValue=(layer,key)=>Object.hasOwn(layer,key)?layer[key]:OPTIONAL_PATTERN_DEFAULTS[key];
 const isObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = v => JSON.parse(JSON.stringify(v));
@@ -94,7 +95,7 @@ export function createLayer(type, id = `layer-${Date.now().toString(36)}-${(++la
   const p = patternById.get(type);
   assert(p, `Unknown pattern: ${type}`);
   assert(safeId(id), 'Invalid layer id');
-  return { id, type, visible: true, opacity: 1, color: '#e9e6df', secondary: '#77736d', rotation: 0, scale: 1, offsetX: 0, offsetY: 0, params: clone(p.defaults), pixelPalette: [], redrawData: null, redrawEdits: {}, redrawPalette: [], hiddenCells: [], customMotif: null, motifTint: false, cellLinks: [], linkWidth: 2, mask: null, imageSource: 'all', patternSettings: {} };
+  return { id, type, visible: true, opacity: 1, color: '#e9e6df', secondary: '#77736d', rotation: 0, scale: 1, offsetX: 0, offsetY: 0, params: clone(p.defaults), pixelPalette: [], redrawData: null, redrawEdits: {}, redrawPalette: [], redrawPlacement: null, hiddenCells: [], customMotif: null, motifTint: false, cellLinks: [], linkWidth: 2, mask: null, imageSource: 'all', patternSettings: {} };
 }
 
 function clonePatternSettings(value, activeType) {
@@ -332,7 +333,7 @@ function normalizePatternState(type, raw, width, height) {
     offsetY: Math.min(height, Math.max(-height, raw.offsetY)),
     params: normalizeParams(type, raw.params),
     pixelPalette: pixelPalette.map(color => color.toLowerCase()),
-    redrawData,redrawEdits,redrawPalette:redrawPalette.map(color=>color.toLowerCase()),
+    redrawData,redrawEdits,redrawPalette:redrawPalette.map(color=>color.toLowerCase()),redrawPlacement:normalizeRedrawPlacement(raw.redrawPlacement),
     hiddenCells: [...new Set(raw.hiddenCells)],
     customMotif: validateDataImage(raw.customMotif, 'customMotif'),
     motifTint,
@@ -427,6 +428,7 @@ export const resolveColorSources = (doc, layer) => imageSourceEngine.resolveColo
 export const hasColorSource = (doc, layer) => imageSourceEngine.hasColorSource(doc, layer);
 export const createCompositeColorSampler = (doc, layer, options) => imageSourceEngine.createCompositeColorSampler(doc, layer, options);
 export const resolveBelowMasks = (doc, layer) => imageSourceEngine.resolveBelowMasks(doc, layer);
+export const captureRedrawPlacement=(doc,layer)=>capturePlacement(doc,resolveColorSources(doc,layer),imageMaskGeometry);
 export * from './layer-tree.mjs';
 const pixelArtEngine = createPixelArtEngine({ normalizeDocument, isImageMaskLayer, imageMaskGeometry, createImageColorSampler, resolveColorSources, hasColorSource });
 export const getPixelGrid = (doc, layer) => pixelArtEngine.getPixelGrid(doc, layer);
@@ -772,8 +774,12 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
     const metrics={},effects={sampleColor:color.sampleColor,fillPaint};if(layer.type==='pixel')effects.pixelData=pixelArtEngine.getPixelDataFromNormalized(doc,layer);let content=renderPattern(layer,doc,preview,metrics,effects);if(!content)continue;
     content=content.replace(/<defs>([\s\S]*?)<\/defs>/g,(_,definitions)=>{parts.push(definitions);return '';});
     content+=renderCellLinks(layer,doc,metrics);
-    const renderedLayer=metrics.world?{...layer,rotation:0,scale:1}:layer;
-    const cx=W/2,cy=H/2,range=doc.seamless?seamlessCopyRange(renderedLayer,doc,metrics.bounds):{x0:0,x1:0,y0:0,y1:0,ox:layer.offsetX,oy:layer.offsetY},transform=`translate(${fmt(range.ox)} ${fmt(range.oy)}) translate(${fmt(cx)} ${fmt(cy)}) rotate(${fmt(renderedLayer.rotation)}) scale(${transformNumber(renderedLayer.scale)}) translate(${fmt(-cx)} ${fmt(-cy)})`,source=`source-${layer.id}`;
+    const delta=layer.type==='redraw'?placementMatrix(layer.redrawPlacement,doc,resolveColorSources(doc,layer),imageMaskGeometry):null;
+    if(delta&&doc.seamless){delta[4]=wrappedOffset(delta[4],W);delta[5]=wrappedOffset(delta[5],H);}
+    const placed=delta?multiplyMatrix(delta,layerMatrix(layer,doc)):null;
+    const renderedLayer=placed?{...layer,rotation:0,scale:1,offsetX:0,offsetY:0}:metrics.world?{...layer,rotation:0,scale:1}:layer;
+    if(placed)metrics.bounds=matrixBounds(placed,W,H);
+    const cx=W/2,cy=H/2,range=doc.seamless?seamlessCopyRange(renderedLayer,doc,metrics.bounds):{x0:0,x1:0,y0:0,y1:0,ox:layer.offsetX,oy:layer.offsetY},transform=placed?matrixAttribute(placed):`translate(${fmt(range.ox)} ${fmt(range.oy)}) translate(${fmt(cx)} ${fmt(cy)}) rotate(${fmt(renderedLayer.rotation)}) scale(${transformNumber(renderedLayer.scale)}) translate(${fmt(-cx)} ${fmt(-cy)})`,source=`source-${layer.id}`;
     if(layer.customMotif&&content.includes(`href="#motif-${layer.id}"`)){
       const motif=`motif-${esc(layer.id)}`,image=`<image href="${esc(layer.customMotif)}" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid meet"/>`;
       if(layer.motifTint){const mask=`motif-alpha-${esc(layer.id)}`;parts.push(`<mask id="${mask}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="1" height="1" mask-type="alpha">${image}</mask><symbol id="${motif}" viewBox="0 0 1 1"><rect x="0" y="0" width="1" height="1" fill="${layer.color}" mask="url(#${mask})"/></symbol>`);}

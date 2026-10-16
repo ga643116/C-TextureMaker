@@ -178,7 +178,7 @@ body.file-dropping:after{content:attr(data-drop-hint);position:fixed;inset:12px;
 .redraw-inspector-head .actions .button{min-width:0;white-space:normal;font-size:12px}
 .redraw-inspector-head [data-action=redraw-import]{grid-column:1 / -1}
 .redraw-thumb{display:block;width:100%;height:100%}
-.redraw-mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin:4px 0 14px;padding:2px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+.redraw-mode-switch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;margin:4px 0 14px;padding:2px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
 .redraw-mode-switch .button{min-width:0;padding:6px 4px;font-size:12px}
 .redraw-mode-switch .button.active,.redraw-edit-tools .button.active{background:var(--ink);border-color:var(--ink);color:var(--panel);font-weight:650}
 .redraw-status{display:flex;align-items:center;gap:8px;min-height:29px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--muted);font-size:12px;line-height:1.4}
@@ -203,3 +203,5 @@ body.file-dropping:after{content:attr(data-drop-hint);position:fixed;inset:12px;
 @keyframes redraw-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.redraw-status[data-state=busy]:before{animation-duration:2.4s}}
 @media(max-width:560px){.redraw-palette{grid-template-columns:repeat(auto-fill,minmax(22px,1fr));gap:4px}.redraw-swatch{height:22px}}
+
+#artboard [data-redraw-region].redraw-hover:not(.redraw-selected){stroke:var(--muted)!important;stroke-opacity:.55;stroke-width:1.5px!important;stroke-linejoin:round;vector-effect:non-scaling-stroke}

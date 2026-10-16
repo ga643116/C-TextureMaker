@@ -13,7 +13,7 @@ const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,48}$/.tes
 const PRESET_KEYS = new Set(['id', 'name', 'version', 'layer', 'seed', 'width', 'height']);
 const CURRENT_PATTERN_KEYS = [
   'opacity', 'color', 'secondary', 'rotation', 'scale', 'offsetX', 'offsetY',
-  'params', 'pixelPalette', 'redrawData', 'redrawEdits', 'redrawPalette', 'hiddenCells', 'customMotif', 'motifTint', 'cellLinks', 'linkWidth', 'mask',
+  'params', 'pixelPalette', 'redrawData', 'redrawEdits', 'redrawPalette', 'redrawPlacement', 'hiddenCells', 'customMotif', 'motifTint', 'cellLinks', 'linkWidth', 'mask',
 ];
 
 function presetName(value) {
@@ -101,7 +101,8 @@ export function createUserPreset(doc, layerId, { id, name } = {}) {
   assert(layer && !isGroupLayer(layer), 'Preset layer was not found');
   const presetLayer = standaloneLayer(layer);
   delete presetLayer.imageSource;
-  for (const snapshot of Object.values(presetLayer.patternSettings ?? {})) delete snapshot.imageSource;
+  if (isPatternLayer(presetLayer)) presetLayer.redrawPlacement=null;
+  for (const snapshot of Object.values(presetLayer.patternSettings ?? {})) { delete snapshot.imageSource; snapshot.redrawPlacement=null; }
   return {
     id,
     name: cleanName,

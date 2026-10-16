@@ -75,6 +75,7 @@ namespace CTextureMaker
         private bool _closeGuardReady;
         private bool _closeRequestPending;
         private bool _allowNextUserClose;
+        private bool _colorPickerBusy;
         private volatile bool _startupFailed;
         private readonly WebView2 _webView;
         private readonly JavaScriptSerializer _serializer;
@@ -552,7 +553,8 @@ namespace CTextureMaker
                 }
                 if (!String.Equals(messageType, "save", StringComparison.Ordinal) &&
                     !String.Equals(messageType, "open", StringComparison.Ordinal) &&
-                    !String.Equals(messageType, "external", StringComparison.Ordinal))
+                    !String.Equals(messageType, "external", StringComparison.Ordinal) &&
+                    !String.Equals(messageType, "pick-color", StringComparison.Ordinal))
                     return;
 
                 requestId = ReadString(message, "id");
@@ -562,6 +564,12 @@ namespace CTextureMaker
                     HandleSaveMessage(message, requestId);
                 else if (String.Equals(messageType, "open", StringComparison.Ordinal))
                     HandleOpenRequest(message, requestId);
+                else if (String.Equals(messageType, "pick-color", StringComparison.Ordinal))
+                    BeginInvoke(new Action(delegate
+                    {
+                        try { HandleColorPickRequest(requestId); }
+                        catch (Exception ex) { PostColorPickResult(requestId, false, false, null, LimitErrorMessage(ex.Message)); }
+                    }));
                 else
                     HandleExternalRequest(message, requestId);
             }
@@ -573,11 +581,75 @@ namespace CTextureMaker
                 string error = LimitErrorMessage(ex.Message);
                 if (String.Equals(messageType, "open", StringComparison.Ordinal))
                     PostOpenResult(requestId, false, false, error, null, null, null);
+                else if (String.Equals(messageType, "pick-color", StringComparison.Ordinal))
+                    PostColorPickResult(requestId, false, false, null, error);
                 else if (String.Equals(messageType, "external", StringComparison.Ordinal))
                     PostExternalResult(requestId, false, error);
                 else
                     PostSaveResult(requestId, false, false, error);
             }
+        }
+
+        private void HandleColorPickRequest(string requestId)
+        {
+            if (_colorPickerBusy)
+                throw new InvalidOperationException("A screen color selection is already active.");
+            _colorPickerBusy = true;
+            try
+            {
+                Rectangle bounds = SystemInformation.VirtualScreen;
+                using (Bitmap screenshot = new Bitmap(bounds.Width, bounds.Height))
+                {
+                    using (Graphics graphics = Graphics.FromImage(screenshot))
+                        graphics.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size, CopyPixelOperation.SourceCopy);
+                    string selectedColor = null;
+                    using (Form picker = new Form())
+                    {
+                        picker.FormBorderStyle = FormBorderStyle.None;
+                        picker.StartPosition = FormStartPosition.Manual;
+                        picker.Bounds = bounds;
+                        picker.ShowInTaskbar = false;
+                        picker.TopMost = true;
+                        picker.KeyPreview = true;
+                        picker.Cursor = Cursors.Cross;
+                        picker.BackgroundImage = screenshot;
+                        picker.BackgroundImageLayout = ImageLayout.None;
+                        picker.MouseDown += delegate(object sender, MouseEventArgs args)
+                        {
+                            if (args.Button != MouseButtons.Left) return;
+                            if (args.X < 0 || args.Y < 0 || args.X >= screenshot.Width || args.Y >= screenshot.Height) return;
+                            Color color = screenshot.GetPixel(args.X, args.Y);
+                            selectedColor = "#" + color.R.ToString("x2") + color.G.ToString("x2") + color.B.ToString("x2");
+                            picker.DialogResult = DialogResult.OK;
+                            picker.Close();
+                        };
+                        picker.KeyDown += delegate(object sender, KeyEventArgs args)
+                        {
+                            if (args.KeyCode != Keys.Escape) return;
+                            args.Handled = true;
+                            picker.DialogResult = DialogResult.Cancel;
+                            picker.Close();
+                        };
+                        picker.ShowDialog(this);
+                        picker.BackgroundImage = null;
+                    }
+                    PostColorPickResult(requestId, true, selectedColor == null, selectedColor, null);
+                }
+            }
+            finally { _colorPickerBusy = false; }
+        }
+
+        private void PostColorPickResult(string requestId, bool ok, bool cancelled, string color, string error)
+        {
+            if (IsDisposed || _webView.CoreWebView2 == null) return;
+            Dictionary<string, object> result = new Dictionary<string, object>();
+            result["type"] = "pick-color-result";
+            result["id"] = requestId;
+            result["ok"] = ok;
+            result["cancelled"] = cancelled;
+            if (color != null) result["color"] = color;
+            if (!String.IsNullOrEmpty(error)) result["error"] = error;
+            _webView.CoreWebView2.PostWebMessageAsJson(_serializer.Serialize(result));
         }
 
         private void HandleSaveMessage(IDictionary<string, object> message, string requestId)

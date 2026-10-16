@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
-import {PATTERNS,SHAPE_PATTERNS,createDocument,createLayer,switchLayerPattern,resetLayerPattern,createImageMaskLayer,isImageMaskLayer,imageMaskGeometry,normalizeDocument,renderSVG,getPixelGrid,getPixelData,resolveColorSources,hasColorSource} from './engine.mjs';
+import {PATTERNS,SHAPE_PATTERNS,createDocument,createLayer,switchLayerPattern,resetLayerPattern,createImageMaskLayer,isImageMaskLayer,imageMaskGeometry,normalizeDocument,renderSVG,captureRedrawPlacement,getPixelGrid,getPixelData,resolveColorSources,hasColorSource} from './engine.mjs';
 import {translator,localized} from './i18n.mjs';
 import {generate} from './vendor/ui-generation.js';
 import {persistentStorage} from './storage.mjs';
@@ -17,7 +17,11 @@ import {pixelExportSize,resizeSVG} from './pixel-export.mjs';
 import {createUserPreset,applyUserPreset,presetPreview} from './user-presets.mjs';
 import {isGroupLayer,isPatternLayer,parentOf,childrenOf,descendantsOf,isLayerVisible,visibleLayerRows,clippingBase,groupLayers,moveLayers,ungroupLayers,canonicalizeLayers,createGroup} from './layer-tree.mjs';
 import {generateRedraw} from './redraw-client.mjs';
-import {getRedrawPalette,redrawRegionColor} from './shape-redraw.mjs';
+import {getRedrawPalette,redrawRegionColor,prepareRedrawData} from './shape-redraw.mjs';
+import {canFollowPlacement} from './redraw-placement.mjs';
+import {captureHistorySnapshot,restoreHistorySnapshot} from './history-snapshot.mjs';
+import {openColorPicker} from './color-picker.mjs';
+import {createScreenColorPicker} from './screen-color.mjs';
 
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const clone=v=>JSON.parse(JSON.stringify(v));
@@ -36,8 +40,10 @@ let imageTarget='customMotif',editMode='toggle',connectStart=null,frame=0,saveTi
 let canvasTool='cursor',brushSize=clamp(Number(prefs.brushSize)||64,4,4096),sharedShapes=[],shapeLibraryReady=false,shapeWriteQueue=Promise.resolve();
 const thumbs=new Map(),nativeSaves=new Map();
 const redrawJobs=new Map(),redrawStates=new Map(),redrawSnapshotSignatures=new Map(),sourceQualityJobs=new WeakMap();
-let selectedRedrawRegion=null,redrawEditMode='select',redrawToolColor='#202020',redrawConfirmResolve=null;
+let selectedRedrawRegion=null,selectedRedrawIds=new Set(),hoveredRedrawRegion=null,colorPicker=null,redrawEditMode='select',redrawToolColor='#202020',redrawConfirmResolve=null;
 const nativeHost=window.chrome?.webview;
+const screenColorPicker=createScreenColorPicker({host:nativeHost});
+const redrawMapHashes=new WeakMap();
 const projectFiles=createProjectFiles({host:nativeHost,download:saveFile});
 let projectFileBusy=false,navigationBusy=false,closeRequestBusy=false,allowUnload=false;
 let savedSnapshot=JSON.stringify(doc),unsavedPrompt=null,projectGeneration=0;
@@ -258,21 +264,21 @@ function redrawPaletteMarkup(layer){
  const colors=getRedrawPalette(layer).slice(0,layer.params.mode==='three'?3:32);
  return colors.map((color,index)=>'<label class="redraw-swatch" title="'+esc(color)+'"><input type="color" data-redraw-palette="'+index+'" value="'+esc(color)+'" aria-label="'+esc(t('redrawPaletteColor'))+' '+(index+1)+'"></label>').join('');
 }
-function redrawSourceSignature(layer){
+function redrawSourceSignature(layer,includeTransform=true){
  const sources=resolveColorSources(doc,layer).filter(source=>source.colorMap);
  const items=sources.map(source=>{
-  const map=source.colorMap;let hash=2166136261;
-  for(let i=0;i<map.rgba.length;i++)hash=Math.imul(hash^map.rgba.charCodeAt(i),16777619);
+  const map=source.colorMap;let hash=redrawMapHashes.get(map);
+  if(hash===undefined){hash=2166136261;for(let i=0;i<map.rgba.length;i++)hash=Math.imul(hash^map.rgba.charCodeAt(i),16777619);redrawMapHashes.set(map,hash);}
   const geometry=imageMaskGeometry(source,doc);
-  return [source.id,source.mode,isLayerVisible(doc,source),map.width,map.height,(hash>>>0).toString(36),geometry.transform,geometry.width,geometry.height,source.parentId??'',source.scale,source.rotation,source.offsetX,source.offsetY,source.flipX,source.flipY];
+  return [source.id,source.mode,isLayerVisible(doc,source),map.width,map.height,(hash>>>0).toString(36),...(includeTransform?[geometry.transform,geometry.width,geometry.height,source.scale,source.rotation,source.offsetX,source.offsetY,source.flipX,source.flipY]:[])];
  });
  return JSON.stringify([doc.width,doc.height,doc.seed,layer.imageSource??'auto',items]);
 }
 function isRedrawSnapshotStale(layer){
  if(!layer.redrawData)return false;
  let saved=redrawSnapshotSignatures.get(layer.id);
- if(!saved){const detail=Number.isFinite(layer.redrawData.detail)?layer.redrawData.detail:layer.params.detail;saved={signature:redrawSourceSignature(layer),detail};redrawSnapshotSignatures.set(layer.id,saved);}
- return saved.detail!==layer.params.detail||saved.signature!==redrawSourceSignature(layer);
+ if(!saved){const detail=Number.isFinite(layer.redrawData.detail)?layer.redrawData.detail:layer.params.detail;saved={signature:redrawSourceSignature(layer,false),detail};redrawSnapshotSignatures.set(layer.id,saved);}
+ return saved.detail!==layer.params.detail||saved.signature!==redrawSourceSignature(layer,false)||!canFollowPlacement(layer.redrawPlacement,doc,resolveColorSources(doc,layer),imageMaskGeometry);
 }
 function setRedrawStatus(layerId,state,message=''){
  redrawStates.set(layerId,{state,message});
@@ -290,12 +296,20 @@ function cancelAllRedrawJobs(){
  for(const id of [...redrawJobs.keys()])cancelRedrawJob(id);
 }
 function redrawRegionById(layer,id){return layer?.redrawData?.regions?.find(region=>region.id===id)??null;}
+function clearRedrawSelection(){selectedRedrawRegion=null;selectedRedrawIds.clear();syncRedrawSelection();}
 function syncRedrawSelection(){
  const layer=activePattern();
  for(const path of $$('#artboard [data-redraw-region]')){
-  const owner=path.dataset.layer||layer?.id;
-  path.classList.toggle('redraw-selected',Boolean(selectedRedrawRegion&&selectedRedrawRegion.layerId===owner&&selectedRedrawRegion.id===path.dataset.redrawRegion));
+  const owner=path.dataset.layer||layer?.id,id=path.dataset.redrawRegion;
+  path.classList.toggle('redraw-selected',Boolean(selectedRedrawRegion?.layerId===owner&&selectedRedrawIds.has(id)));
+  path.classList.toggle('redraw-hover',Boolean(hoveredRedrawRegion?.layerId===owner&&hoveredRedrawRegion.id===id));
  }
+}
+function hoverRedrawRegion(target){
+ const path=canvasTool==='cursor'&&!space&&!pointer&&active().type==='redraw'?target?.closest('[data-redraw-region]'):null;
+ const next=path&&(path.dataset.layer||selected)===selected?{layerId:selected,id:path.dataset.redrawRegion}:null;
+ if(next?.id===hoveredRedrawRegion?.id&&next?.layerId===hoveredRedrawRegion?.layerId)return;
+ hoveredRedrawRegion=next;syncRedrawSelection();
 }
 
 function updateRedrawRegionEdit(layer,regionId,key,value){
@@ -322,28 +336,30 @@ function setRedrawRegionColor(el,finish){
  const layer=active(),regionId=selectedRedrawRegion?.layerId===layer.id?selectedRedrawRegion.id:null;
  if(layer.type!=='redraw'||!regionId||!redrawRegionById(layer,regionId)||!/^#[0-9a-f]{6}$/i.test(el.value))return;
  if(pendingBefore===null)pendingBefore=JSON.stringify(doc);
- updateRedrawRegionEdit(layer,regionId,'color',el.value.toLowerCase());syncDirty();schedulePreview();if(finish)flush();
+ for(const id of selectedRedrawIds)updateRedrawRegionEdit(layer,id,'color',el.value.toLowerCase());syncDirty();schedulePreview();if(finish)flush();
 }
 function setRedrawRegionVisible(visible){
  const layer=active(),regionId=selectedRedrawRegion?.layerId===layer.id?selectedRedrawRegion.id:null;
  if(layer.type!=='redraw'||!regionId||!redrawRegionById(layer,regionId))return;
- mutate(()=>updateRedrawRegionEdit(layer,regionId,'hidden',!visible));
+ mutate(()=>{for(const id of selectedRedrawIds)updateRedrawRegionEdit(layer,id,'hidden',!visible);});
 }
 function setRedrawToolColor(el){
  if(!/^#[0-9a-f]{6}$/i.test(el.value))return;
  redrawToolColor=el.value.toLowerCase();
  for(const input of $$('#redraw-tool-color'))if(input!==el)input.value=redrawToolColor;
 }
-function selectRedrawRegion(layer,regionId){
+function selectRedrawRegion(layer,regionId,toggle=false){
  const region=redrawRegionById(layer,regionId);if(!region)return;
- selectedRedrawRegion={layerId:layer.id,id:regionId};
+ if(selectedRedrawRegion?.layerId!==layer.id||!toggle)selectedRedrawIds.clear();
+ if(toggle&&selectedRedrawIds.has(regionId))selectedRedrawIds.delete(regionId);else selectedRedrawIds.add(regionId);
+ selectedRedrawRegion=selectedRedrawIds.size?{layerId:layer.id,id:selectedRedrawIds.has(regionId)?regionId:[...selectedRedrawIds].at(-1)}:null;
  if(redrawEditMode==='select')redrawToolColor=redrawRegionColor(region,layer);
  syncRedrawSelection();renderRedrawInspector();
 }
-function applyRedrawRegionClick(layer,regionId){
- if(redrawEditMode==='select'){selectRedrawRegion(layer,regionId);return false;}
- selectedRedrawRegion={layerId:layer.id,id:regionId};
- if(redrawEditMode==='erase')updateRedrawRegionEdit(layer,regionId,'hidden',true);
+function applyRedrawRegionClick(layer,regionId,toggle=false){
+ if(redrawEditMode==='select'){selectRedrawRegion(layer,regionId,toggle);return false;}
+ selectedRedrawRegion={layerId:layer.id,id:regionId};selectedRedrawIds=new Set([regionId]);
+ if(redrawEditMode==='erase')updateRedrawRegionEdit(layer,regionId,'hidden',!layer.redrawEdits?.[regionId]?.hidden);
  else updateRedrawRegionEdit(layer,regionId,'color',redrawToolColor);
  syncDirty();schedulePreview();renderRedrawInspector();return true;
 }
@@ -379,12 +395,12 @@ async function generateSelectedRedraw(){
   if(layer.params.detail!==job.detail||redrawSourceSignature(layer)!==job.signature||JSON.stringify(layer.redrawEdits??{})!==job.editsSignature)throw new Error('RedrawSourceChanged');
   const beforeText=JSON.stringify(doc);
   if(new Blob([beforeText]).size>MAX_PROJECT_BYTES)throw new Error('ProjectTooLarge');
-  const next=normalizeDocument({...doc,layers:doc.layers.map(item=>item.id===layer.id?{...item,redrawData:data,redrawEdits:{}}:item)});
+  const next=normalizeDocument({...doc,layers:doc.layers.map(item=>item.id===layer.id?{...item,redrawData:data,redrawPlacement:captureRedrawPlacement(doc,layer),redrawEdits:{}}:item)});
   const afterText=JSON.stringify(next);
   if(new Blob([afterText]).size>MAX_PROJECT_BYTES)throw new Error('ProjectTooLarge');
   if(!isCurrent())return;
-  redrawSnapshotSignatures.set(layer.id,{signature:job.signature,detail:job.detail});
-  selectedRedrawRegion=null;setRedrawStatus(layer.id,'ready');
+  redrawSnapshotSignatures.set(layer.id,{signature:redrawSourceSignature(layer,false),detail:job.detail});
+  clearRedrawSelection();setRedrawStatus(layer.id,'ready');
   mutate(()=>{doc=next;});
  }catch(error){
   if(error?.name==='AbortError'||!isCurrent())return;
@@ -394,20 +410,21 @@ async function generateSelectedRedraw(){
  }
 }
 function renderRedrawInspector(savedSections=null){
+ colorPicker?.close();colorPicker=null;
  const layer=active(),p=pattern('redraw'),sources=resolveColorSources(doc,layer);
- if(selectedRedrawRegion?.layerId!==layer.id)selectedRedrawRegion=null;
+ if(selectedRedrawRegion?.layerId!==layer.id)clearRedrawSelection();
  const sections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
  const controls=keys=>keys.map(key=>p.controls.find(control=>control.key===key)).filter(Boolean).map(control=>renderControl(control,layer,p)).join('');
  const current=selectedRedrawRegion?redrawRegionById(layer,selectedRedrawRegion.id):null;
- if(!current)selectedRedrawRegion=null;
+ if(!current)clearRedrawSelection();
  const edit=current?(layer.redrawEdits?.[current.id]??{}):null;
  const currentColor=current?redrawRegionColor(current,layer):'';
  const status=redrawStates.get(layer.id)??{state:'idle',message:''};
  const statusText=t(status.message||(status.state==='busy'?'redrawGenerating':status.state==='ready'?'redrawReady':status.state==='error'?'redrawFailed':'redrawIdle'));
  const stale=isRedrawSnapshotStale(layer);
- const modeButtons=['blocks','three'].map(mode=>'<button type="button" class="button '+(layer.params.mode===mode?'active':'')+'" data-action="redraw-mode" data-mode="'+mode+'" aria-pressed="'+(layer.params.mode===mode)+'">'+esc(t(mode==='blocks'?'redrawModeBlocks':'redrawModeThree'))+'</button>').join('');
+ const modeButtons=['blocks','three','outline'].map(mode=>'<button type="button" class="button '+(layer.params.mode===mode?'active':'')+'" data-action="redraw-mode" data-mode="'+mode+'" aria-pressed="'+(layer.params.mode===mode)+'">'+esc(t(mode==='blocks'?'redrawModeBlocks':mode==='three'?'redrawModeThree':'redrawModeOutline'))+'</button>').join('');
  const selectedRegion=current
-  ?'<div class="redraw-region-readout"><strong class="mono">'+esc(current.id)+'</strong><span class="redraw-color-chip" style="--region-color:'+esc(current.color)+'"></span><span>'+esc(t('redrawOriginalColor'))+' '+esc(current.color)+'</span></div><label class="toggle-row"><span>'+esc(t('redrawRegionVisible'))+'</span><input id="redraw-region-visible" type="checkbox" '+(edit?.hidden?'':'checked')+'></label><div class="field"><label for="redraw-region-color">'+esc(t('redrawCurrentColor'))+'</label><input id="redraw-region-color" type="color" value="'+esc(currentColor)+'"></div>'
+  ?'<div class="redraw-region-readout"><strong class="mono">'+esc(selectedRedrawIds.size>1?t('redrawSelectedCount').replace('{count}',selectedRedrawIds.size):current.id)+'</strong><span class="redraw-color-chip" style="--region-color:'+esc(current.color)+'"></span><span>'+esc(t('redrawOriginalColor'))+' '+esc(current.color)+'</span></div><label class="toggle-row"><span>'+esc(t('redrawRegionVisible'))+'</span><input id="redraw-region-visible" type="checkbox" '+(edit?.hidden?'':'checked')+'></label><div class="field"><label for="redraw-region-color">'+esc(t('redrawCurrentColor'))+'</label><input id="redraw-region-color" type="color" value="'+esc(currentColor)+'"></div>'
   :'<p class="helper">'+esc(t(layer.redrawData?'redrawRegionSelectHint':'redrawNoData'))+'</p>';
  const regionActions='<div class="redraw-edit-tools">'+[['select','redrawEditSelect'],['erase','redrawEditErase'],['recolor','redrawEditRecolor']].map(([mode,key])=>'<button type="button" class="button '+(redrawEditMode===mode?'active':'')+'" data-action="redraw-edit-mode" data-mode="'+mode+'" aria-pressed="'+(redrawEditMode===mode)+'">'+esc(t(key))+'</button>').join('')+'</div>';
  $('#inspector').innerHTML='<div class="inspector-head redraw-inspector-head"><div class="eyebrow">'+esc(t('properties'))+'</div><h1>'+esc(label(p.name))+'</h1><p>'+esc(label(p.description))+'</p><div class="actions"><button class="button" data-action="redraw-import">'+icon('image')+esc(t('redrawImport'))+'</button><button type="button" class="button primary" data-action="redraw-generate" '+(status.state==='busy'?'disabled':'')+'>'+icon('random')+esc(t(layer.redrawData?'redrawRegenerate':'redrawGenerate'))+'</button>'+ib('reset','reset','reset')+ib('save-preset','star','savePreset')+'</div><p class="helper">'+esc(sources.length?sources.map(source=>source.name).join(' · '):t(hasColorSource(doc,layer)?'imageSourceEmpty':'redrawSourceRequired'))+'</p><p id="redraw-generation-status" class="redraw-status" role="status" aria-live="polite" data-state="'+esc(status.state)+'">'+esc(statusText)+'</p>'+(stale?'<p class="helper redraw-stale" data-redraw-stale>'+esc(t('redrawStale'))+'</p>':'')+'</div>'
@@ -445,25 +462,34 @@ async function ensurePixelSourceQuality(targetLayer=activePattern()){
   try{await task;}finally{if(sourceQualityJobs.get(source)===task)sourceQualityJobs.delete(source);}
  }
 }
-function renderApp(){finishPointer();motionRun?.cancel();const sections=new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));const listScroll=$('#pattern-list')?.scrollTop??0,layerScroll=$('#layer-list')?.scrollTop??0,inspectorScroll=$('#pattern-list .active')?.dataset.pattern===active().type?($('#inspector')?.scrollTop??0):0;document.documentElement.lang={zh:'zh-Hant',en:'en',ja:'ja'}[lang];document.documentElement.dataset.theme=prefs.theme==='dark'?'dark':'light';$('#app').innerHTML=`<header class="topbar"><div class="brand"><img src="icon.svg" alt=""><span>C-TextureMaker</span><small>1.6.0</small></div><button class="document-name text-btn" data-action="rename" title="${esc(t('rename'))}">${icon('file')}<span>${esc(doc.name)}</span><small id="project-dirty" hidden title="${esc(t('unsaved'))}" aria-label="${esc(t('unsaved'))}">●</small></button><div class="top-actions">${ib('new','plus','newDoc')}${tb('open','open','open')}<div class="save-control">${tb('save','save','save')}<button class="icon-btn save-arrow" data-action="save-menu" aria-label="${esc(t('saveOptions'))}" title="${esc(t('saveOptions'))}" aria-expanded="false" aria-controls="save-menu">${icon('down')}</button><div id="save-menu" class="save-menu" hidden><button class="text-btn" data-action="save-as">${icon('save')}<span>${esc(t('saveAs'))}</span><kbd>Ctrl+Shift+S</kbd></button></div></div><span class="divider"></span>${ib('undo','undo','undo',past.length?'':'disabled')}${ib('redo','redo','redo',future.length?'':'disabled')}<span class="divider"></span>${ib('theme',prefs.theme==='dark'?'sun':'moon','theme')}<select class="language-select" data-action="language" aria-label="${esc(t('language'))}"><option value="zh" ${lang==='zh'?'selected':''}>繁體中文</option><option value="en" ${lang==='en'?'selected':''}>English</option><option value="ja" ${lang==='ja'?'selected':''}>日本語</option></select>${ib('help','help','help')}<button class="button primary export-top" data-action="export">${icon('export')}${esc(t('export'))}</button></div></header><main class="workspace ${focus?'focus':''}"><aside class="library" aria-label="${esc(t('library'))}"><div class="library-head"><div class="section-title">${esc(t('library'))}<span class="mono">${PATTERNS.length}</span></div><label class="search-box">${icon('search')}<input id="pattern-search" aria-label="${esc(t('search'))}" placeholder="${esc(t('search'))}" value="${esc(query)}"></label><nav class="category-tabs">${['all','radial','pattern','organic','technical'].map(c=>`<button data-action="category" data-category="${c}" class="${category===c?'active':''}">${esc(t(c))}</button>`).join('')}</nav></div><div id="pattern-list" class="pattern-list"></div><div class="library-bottom"><div class="section-title">${esc(t('layers'))}<div class="layer-add-actions">${ib('add-image-mask','image','addImageMask')}${ib('add-layer','plus','addLayer')}${ib('group-layers','folder','groupLayers')}${ib('ungroup-layers','folderUp','ungroupLayers')}</div></div><div id="layer-list" class="layer-list"></div><div class="layer-tools">${ib('layer-up','up','moveUp')}${ib('layer-down','down','moveDown')}${ib('duplicate','copy','duplicate')}${ib('delete','trash','remove')}</div></div><button class="preset-launch" data-action="presets">${icon('star')}<span>${esc(t('presets'))}</span>${icon('chevron')}</button></aside><section class="stage" aria-label="${esc(t('canvas'))}"><div class="stage-header"><span class="art-title" id="art-title">${esc(layerName(active()))}</span><button class="mono canvas-size-button" id="dimensions-label" data-action="canvas-size" title="${esc(t('editCanvasSize'))}" aria-label="${esc(t('editCanvasSize'))}">${doc.width} × ${doc.height}</button><div class="views"><button data-action="view-single" class="${repeat===1?'active':''}">${esc(t('single'))}</button><button data-action="view-repeat" class="${repeat===3?'active':''}">${esc(t('repeat'))}</button></div>${ib('edges','grid','tileEdges')}</div><div class="viewport" id="viewport" data-canvas-tool="${canvasTool}"><div id="brush-cursor" class="brush-cursor" hidden></div><svg id="connect-guide" class="connect-guide" aria-hidden="true" hidden><line/><circle r="6"/></svg><div class="stage-status">${esc(t('live'))}</div><div class="artboard-wrap" id="artboard-wrap"><div class="artboard-label" id="artboard-label"></div><div class="artboard" id="artboard"></div><div id="tile-grid" class="tile-grid" hidden></div><svg id="mask-overlay" class="mask-overlay" aria-label="${esc(t('maskTransform'))}" hidden></svg></div>${['dots','polygons'].includes(active().type)?`<div class="cell-edit-bar">${cellToolbar()}</div>`:''}</div><div class="stage-foot"><span class="stage-caption">${esc(t('vector'))}</span><div class="zoom-controls">${ib('tool-cursor','cursor','cursorTool',`aria-pressed="${canvasTool==='cursor'}"`)}${ib('tool-hand','hand','handTool',`aria-pressed="${canvasTool==='hand'}"`)}<span class="divider"></span>${ib('zoom-out','minus','zoomOut')}<span id="zoom-label" class="mono">100%</span>${ib('zoom-in','plus','zoomIn')}<span class="divider"></span>${ib('fit','fit','fit')}</div><div class="stage-focus">${ib('focus','expand',focus?'showPanel':'hidePanel')}</div></div></section><aside class="inspector" id="inspector" aria-label="${esc(t('properties'))}"></aside></main><footer class="statusbar"><span class="local-dot"></span><span>${esc(t('offline'))}</span><span class="line"></span><span id="save-status">${esc(t(saveState))}</span><span class="right"><span class="canvas-help">${esc(t('canvasHint'))}</span><span id="render-time" class="mono"></span><button type="button" id="alpha-status" class="pill alpha-status-toggle" data-action="toggle-alpha" aria-pressed="${doc.transparent}" aria-label="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}" title="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}">${esc(t(doc.transparent?'alpha':'solid'))}</button></span></footer>`;
+function prepareRedrawDocument(){
+ for(const layer of doc.layers){
+  const states=[...(layer.type==='redraw'?[layer]:[]),...(layer.patternSettings?.redraw?[layer.patternSettings.redraw]:[])];
+  for(const state of states)if(state.redrawData){
+   state.redrawData=prepareRedrawData(state.redrawData);
+   if(!state.redrawPlacement)state.redrawPlacement=captureRedrawPlacement(doc,{...layer,...state,type:'redraw'});
+  }
+ }
+}
+function renderApp(){colorPicker?.close();colorPicker=null;prepareRedrawDocument();finishPointer();motionRun?.cancel();const sections=new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));const listScroll=$('#pattern-list')?.scrollTop??0,layerScroll=$('#layer-list')?.scrollTop??0,inspectorScroll=$('#pattern-list .active')?.dataset.pattern===active().type?($('#inspector')?.scrollTop??0):0;document.documentElement.lang={zh:'zh-Hant',en:'en',ja:'ja'}[lang];document.documentElement.dataset.theme=prefs.theme==='dark'?'dark':'light';$('#app').innerHTML=`<header class="topbar"><div class="brand"><img src="icon.svg" alt=""><span>C-TextureMaker</span><small>1.6.0</small></div><button class="document-name text-btn" data-action="rename" title="${esc(t('rename'))}">${icon('file')}<span>${esc(doc.name)}</span><small id="project-dirty" hidden title="${esc(t('unsaved'))}" aria-label="${esc(t('unsaved'))}">●</small></button><div class="top-actions">${ib('new','plus','newDoc')}${tb('open','open','open')}<div class="save-control">${tb('save','save','save')}<button class="icon-btn save-arrow" data-action="save-menu" aria-label="${esc(t('saveOptions'))}" title="${esc(t('saveOptions'))}" aria-expanded="false" aria-controls="save-menu">${icon('down')}</button><div id="save-menu" class="save-menu" hidden><button class="text-btn" data-action="save-as">${icon('save')}<span>${esc(t('saveAs'))}</span><kbd>Ctrl+Shift+S</kbd></button></div></div><span class="divider"></span>${ib('undo','undo','undo',past.length?'':'disabled')}${ib('redo','redo','redo',future.length?'':'disabled')}<span class="divider"></span>${ib('theme',prefs.theme==='dark'?'sun':'moon','theme')}<select class="language-select" data-action="language" aria-label="${esc(t('language'))}"><option value="zh" ${lang==='zh'?'selected':''}>繁體中文</option><option value="en" ${lang==='en'?'selected':''}>English</option><option value="ja" ${lang==='ja'?'selected':''}>日本語</option></select>${ib('help','help','help')}<button class="button primary export-top" data-action="export">${icon('export')}${esc(t('export'))}</button></div></header><main class="workspace ${focus?'focus':''}"><aside class="library" aria-label="${esc(t('library'))}"><div class="library-head"><div class="section-title">${esc(t('library'))}<span class="mono">${PATTERNS.length}</span></div><label class="search-box">${icon('search')}<input id="pattern-search" aria-label="${esc(t('search'))}" placeholder="${esc(t('search'))}" value="${esc(query)}"></label><nav class="category-tabs">${['all','radial','pattern','organic','technical'].map(c=>`<button data-action="category" data-category="${c}" class="${category===c?'active':''}">${esc(t(c))}</button>`).join('')}</nav></div><div id="pattern-list" class="pattern-list"></div><div class="library-bottom"><div class="section-title">${esc(t('layers'))}<div class="layer-add-actions">${ib('add-image-mask','image','addImageMask')}${ib('add-layer','plus','addLayer')}${ib('group-layers','folder','groupLayers')}${ib('ungroup-layers','folderUp','ungroupLayers')}</div></div><div id="layer-list" class="layer-list"></div><div class="layer-tools">${ib('layer-up','up','moveUp')}${ib('layer-down','down','moveDown')}${ib('duplicate','copy','duplicate')}${ib('delete','trash','remove')}</div></div><button class="preset-launch" data-action="presets">${icon('star')}<span>${esc(t('presets'))}</span>${icon('chevron')}</button></aside><section class="stage" aria-label="${esc(t('canvas'))}"><div class="stage-header"><span class="art-title" id="art-title">${esc(layerName(active()))}</span><button class="mono canvas-size-button" id="dimensions-label" data-action="canvas-size" title="${esc(t('editCanvasSize'))}" aria-label="${esc(t('editCanvasSize'))}">${doc.width} × ${doc.height}</button><div class="views"><button data-action="view-single" class="${repeat===1?'active':''}">${esc(t('single'))}</button><button data-action="view-repeat" class="${repeat===3?'active':''}">${esc(t('repeat'))}</button></div>${ib('edges','grid','tileEdges')}</div><div class="viewport" id="viewport" data-canvas-tool="${canvasTool}"><div id="brush-cursor" class="brush-cursor" hidden></div><svg id="connect-guide" class="connect-guide" aria-hidden="true" hidden><line/><circle r="6"/></svg><div class="stage-status">${esc(t('live'))}</div><div class="artboard-wrap" id="artboard-wrap"><div class="artboard-label" id="artboard-label"></div><div class="artboard" id="artboard"></div><div id="tile-grid" class="tile-grid" hidden></div><svg id="mask-overlay" class="mask-overlay" aria-label="${esc(t('maskTransform'))}" hidden></svg></div>${['dots','polygons'].includes(active().type)?`<div class="cell-edit-bar">${cellToolbar()}</div>`:''}</div><div class="stage-foot"><span class="stage-caption">${esc(t('vector'))}</span><div class="zoom-controls">${ib('tool-cursor','cursor','cursorTool',`aria-pressed="${canvasTool==='cursor'}"`)}${ib('tool-hand','hand','handTool',`aria-pressed="${canvasTool==='hand'}"`)}<span class="divider"></span>${ib('zoom-out','minus','zoomOut')}<span id="zoom-label" class="mono">100%</span>${ib('zoom-in','plus','zoomIn')}<span class="divider"></span>${ib('fit','fit','fit')}</div><div class="stage-focus">${ib('focus','expand',focus?'showPanel':'hidePanel')}</div></div></section><aside class="inspector" id="inspector" aria-label="${esc(t('properties'))}"></aside></main><footer class="statusbar"><span class="local-dot"></span><span>${esc(t('offline'))}</span><span class="line"></span><span id="save-status">${esc(t(saveState))}</span><span class="right"><span class="canvas-help">${esc(t('canvasHint'))}</span><span id="render-time" class="mono"></span><button type="button" id="alpha-status" class="pill alpha-status-toggle" data-action="toggle-alpha" aria-pressed="${doc.transparent}" aria-label="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}" title="${esc(t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid'))}">${esc(t(doc.transparent?'alpha':'solid'))}</button></span></footer>`;
  if(nativeHost){$('.topbar').insertAdjacentHTML('beforeend',`<div class="window-controls">${ib('window-minimize','minus','minimize')}${ib('window-maximize','windowMaximize','maximize')}${ib('window-close','close','closeWindow')}</div>`);updateWindowState(windowMaximized);nativeHost.postMessage({type:'window',action:'theme',theme:prefs.theme==='dark'?'dark':'light'});nativeHost.postMessage({type:'window',action:'state'});}
  renderPatternList();renderLayers();renderInspector(sections);renderPreview();syncDirty();bindViewport();updateCanvasCursor();$('#pattern-list').scrollTop=listScroll;$('#layer-list').scrollTop=layerScroll;$('#inspector').scrollTop=inspectorScroll;void ensurePixelSourceQuality().catch(error=>console.error(error));
 }
 function updateWindowState(maximized){windowMaximized=Boolean(maximized);const button=$('[data-action=window-maximize]');if(button){button.innerHTML=icon(windowMaximized?'windowRestore':'windowMaximize');button.title=t(windowMaximized?'restoreWindow':'maximize');button.setAttribute('aria-label',button.title);}}
 function isDirty(){return savedSnapshot===null||JSON.stringify(doc)!==savedSnapshot;}
-function syncDirty(){const dirty=isDirty(),mark=$('#project-dirty');if(mark)mark.hidden=!dirty;document.documentElement.dataset.projectDirty=String(dirty);}
+function syncDirty(){const dirty=pendingBefore!==null||isDirty(),mark=$('#project-dirty');if(mark)mark.hidden=!dirty;document.documentElement.dataset.projectDirty=String(dirty);}
 function syncHistory(){syncDirty();const u=$('[data-action=undo]'),r=$('[data-action=redo]');if(u)u.disabled=!past.length;if(r)r.disabled=!future.length;}
-function push(before){if(JSON.stringify(doc)===before)return;past.push(before);let budget=past.reduce((n,s)=>n+s.length,0);while(past.length>1&&(past.length>60||budget>24*1024*1024))budget-=past.shift().length;future=[];syncHistory();autosave();}
+function push(before){if(JSON.stringify(doc)===before){syncDirty();return;}past.push(captureHistorySnapshot(JSON.parse(before),past.at(-1)));if(past.length>30)past.shift();future=[];syncHistory();autosave();}
 function flush(){if(pendingBefore!==null){const b=pendingBefore;pendingBefore=null;push(b);}}
 function mutate(fn,render=true){finishPointer();flush();connectStart=null;const before=JSON.stringify(doc);fn();push(before);if(render)renderApp();else schedulePreview();}
-function historyMove(direction){finishPointer();cancelAllRedrawJobs();flush();connectStart=null;const from=direction==='undo'?past:future,to=direction==='undo'?future:past;if(!from.length)return;to.push(JSON.stringify(doc));doc=JSON.parse(from.pop());syncLayerSelection();renderApp();autosave();}
+function historyMove(direction){finishPointer();cancelAllRedrawJobs();flush();connectStart=null;const from=direction==='undo'?past:future,to=direction==='undo'?future:past;if(!from.length)return;to.push(captureHistorySnapshot(doc,from.at(-1)??to.at(-1)));if(to.length>30)to.shift();doc=restoreHistorySnapshot(from.pop());syncLayerSelection();renderApp();autosave();}
 function setSaveState(key){saveState=key;const status=$('#save-status');if(status)status.textContent=t(key);}
 function queueAutosave(snapshot,version){const write=()=>persistentStorage.setRecord('autosave',snapshot),task=autosaveQueue.then(write,write);autosaveQueue=task.then(()=>undefined,()=>undefined);task.then(okay=>{if(version===autosaveSequence)setSaveState(okay?'autosaved':'autosaveFailed');},()=>{if(version===autosaveSequence)setSaveState('autosaveFailed');});}
 function autosave(){syncDirty();if(!storageReady)return;clearTimeout(saveTimer);const version=++autosaveSequence;setSaveState('saving');saveTimer=setTimeout(()=>{saveTimer=0;queueAutosave(clone(doc),version);},350);}
 function persistAutosaveNow(){clearTimeout(saveTimer);saveTimer=0;if(!storageReady)return;const version=++autosaveSequence;setSaveState('saving');queueAutosave(clone(doc),version);}
 function toast(key,raw=false){clearTimeout(toastTimer);const el=$('#toast');el.textContent=raw?key:t(key);el.classList.add('show');toastTimer=setTimeout(()=>el.classList.remove('show'),3000);}
 function schedulePreview(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;renderPreview();});}
-function renderPreview(){const start=performance.now(),rgb=activePattern().color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160;$('#artboard').style.setProperty('--checker1',bright?'#424242':'#ffffff');$('#artboard').style.setProperty('--checker2',bright?'#373737':'#f0f0f0');try{$('#artboard').innerHTML=renderSVG(doc,{preview:true,repeat});syncRedrawSelection();}catch(e){console.error(e);toast('exportError');return;}const elapsed=performance.now()-start;$('#render-time').textContent=`${Math.round(elapsed)} ms`;$('#dimensions-label').textContent=`${doc.width} × ${doc.height}`;$('#artboard-label').textContent=`${doc.width} × ${doc.height}${repeat===3?' / 3 × 3':''} · ${doc.seamless?t('seamless'):t('single')}`;const alphaStatus=$('#alpha-status'),alphaStatusTitle=t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid');alphaStatus.textContent=t(doc.transparent?'alpha':'solid');alphaStatus.setAttribute('aria-pressed',String(doc.transparent));alphaStatus.setAttribute('aria-label',alphaStatusTitle);alphaStatus.title=alphaStatusTitle;$('#tile-grid').hidden=!(repeat===3&&tileEdges);syncPixelInspector();fitLayout();}
+function renderPreview(){prepareRedrawDocument();const start=performance.now(),rgb=activePattern().color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160;$('#artboard').style.setProperty('--checker1',bright?'#424242':'#ffffff');$('#artboard').style.setProperty('--checker2',bright?'#373737':'#f0f0f0');try{$('#artboard').innerHTML=renderSVG(doc,{preview:true,repeat});syncRedrawSelection();}catch(e){console.error(e);toast('exportError');return;}const elapsed=performance.now()-start;$('#render-time').textContent=`${Math.round(elapsed)} ms`;$('#dimensions-label').textContent=`${doc.width} × ${doc.height}`;$('#artboard-label').textContent=`${doc.width} × ${doc.height}${repeat===3?' / 3 × 3':''} · ${doc.seamless?t('seamless'):t('single')}`;const alphaStatus=$('#alpha-status'),alphaStatusTitle=t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid');alphaStatus.textContent=t(doc.transparent?'alpha':'solid');alphaStatus.setAttribute('aria-pressed',String(doc.transparent));alphaStatus.setAttribute('aria-label',alphaStatusTitle);alphaStatus.title=alphaStatusTitle;$('#tile-grid').hidden=!(repeat===3&&tileEdges);syncPixelInspector();fitLayout();}
 function fitLayout(){const vp=$('#viewport');if(!vp)return;const rect=vp.getBoundingClientRect(),base=Math.min((rect.width-82)/(doc.width*repeat),(rect.height-76)/(doc.height*repeat));const unit=Math.max(.025,base)*zoom;const art=$('#artboard'),wrap=$('#artboard-wrap');art.style.width=`${doc.width*repeat*unit}px`;art.style.height=`${doc.height*repeat*unit}px`;wrap.style.transform=`translate(calc(-50% + ${pan.x}px),calc(-50% + ${pan.y}px))`;$('#zoom-label').textContent=`${Math.round(unit*100)}%`;if(lastCanvasPoint)updateBrushCursor(lastCanvasPoint);updateConnectGuide();updateMaskOverlay();}
 function fit(){finishPointer();zoom=1;pan={x:0,y:0};fitLayout();}
 window.addEventListener('resize',fitLayout);
@@ -488,10 +514,21 @@ function setField(el,finish){
  if(el.type==='checkbox')v=el.checked;else if(el.type==='range'||el.type==='number'){if(el.value===''||!Number.isFinite(el.valueAsNumber))return;const step=Number(el.step)||1;v=clamp(Math.round(el.valueAsNumber/step)*step,Number(el.min),Number(el.max));v=Number(v.toFixed(4));}else {v=el.value;if(['color','secondary','background','shadowColor','lineColor'].includes(key)&&!/^#[0-9a-f]{6}$/i.test(v)){if(finish)el.value=obj[key];return;}if(target==='params'){const c=pattern(active().type).controls.find(c=>c.key===key);const option=c?.options?.find(o=>String(o.value)===v);if(option)v=option.value;}}
  if(pendingBefore===null)pendingBefore=JSON.stringify(doc);if(active().type==='pixel'&&target==='params'&&key==='paletteMode'&&v==='custom')active().pixelPalette=[...getPixelData(doc,active()).palette];if(active().type==='redraw'&&target==='params'&&key==='paletteMode'&&v==='custom'&&!active().redrawPalette?.length)active().redrawPalette=[...getRedrawPalette(active())];if(target==='params'&&active().type==='redraw'&&key==='detail')cancelRedrawJob(active().id);if((target==='layer'&&key==='imageSource')||(target==='layer'&&isImageMaskLayer(active()))||(target==='doc'&&['width','height','seed'].includes(key)))cancelAllRedrawJobs();connectStart=null;if(target==='params'&&key==='shape')active().customMotif=null;if(target==='doc'&&['width','height'].includes(key)){Object.assign(doc,resizeCanvas(doc.width,doc.height,key,v,doc.aspectRatio));syncCanvasFields(finish?null:el);v=doc[key];}else if(target==='group'&&key==='name')obj[key]=String(v).replace(/[\u0000-\u001f\u007f-\u009f]/g,'').trim().slice(0,80)||obj[key];else obj[key]=v;syncDirty();
  if(isImageMaskLayer(active())){for(const output of $$('[data-mask-threshold]'))output.textContent=active().threshold;for(const button of $$('[data-action=mask-invert]'))button.setAttribute('aria-pressed',String(active().invert));}
- $$(`[data-target="${target}"][data-key="${key}"]`).forEach(other=>{if(other!==el){if(other.type==='checkbox')other.checked=v;else other.value=v;}});schedulePreview();if(finish){flush();if(target==='group'&&key==='name'){renderLayers();renderInspector();$('#art-title').textContent=layerName(active());}if(target==='params'&&(el.tagName==='SELECT'||el.type==='checkbox'||key==='diagonals'))renderInspector();if(target==='doc'&&['width','height'].includes(key))fit();if(target==='layer'&&key==='imageSource'){renderInspector();void ensurePixelSourceQuality().catch(error=>console.error(error));}}
+ $$(`[data-target="${target}"][data-key="${key}"]`).forEach(other=>{if(other!==el){if(other.type==='checkbox')other.checked=v;else other.value=v;}});
+ const fastLine=active().type==='redraw'&&target==='params'&&key==='lineColor';
+ if(fastLine){for(const path of $$('#artboard [data-redraw-line-color]'))if(path.dataset.redrawLineColor===active().id)path.setAttribute('stroke',v);for(const path of $$('#artboard [data-redraw-line-fill]'))if(path.dataset.redrawLineFill===active().id)path.setAttribute('fill',v);}
+ else schedulePreview();if(finish){if(fastLine)schedulePreview();flush();if(target==='group'&&key==='name'){renderLayers();renderInspector();$('#art-title').textContent=layerName(active());}if(target==='params'&&(el.tagName==='SELECT'||el.type==='checkbox'||key==='diagonals'))renderInspector();if(target==='doc'&&['width','height'].includes(key))fit();if(target==='layer'&&key==='imageSource'){renderInspector();void ensurePixelSourceQuality().catch(error=>console.error(error));}}
 }
 
-document.addEventListener('click',async e=>{if(!storageReady)return;const card=e.target.closest('[data-pattern]');if(card){const type=card.dataset.pattern;mutate(()=>{const l=activePattern();cancelRedrawJob(l.id);redrawSnapshotSignatures.delete(l.id);selectedRedrawRegion=null;const fresh=switchLayerPattern(l,type);doc.layers[doc.layers.indexOf(l)]=fresh;setLayerSelection([fresh.id]);});return;}
+document.addEventListener('click',e=>{
+ const input=e.target.closest('#inspector input[type="color"]');
+ if(!storageReady||active().type!=='redraw'||!input)return;
+ e.preventDefault();
+ const layerId=selected;
+ const send=(color,event)=>{if(input.isConnected&&selected===layerId){input.value=color;input.dispatchEvent(new Event(event,{bubbles:true}));}};
+ colorPicker=openColorPicker({anchor:input,value:input.value,onInput:color=>send(color,'input'),onChange:color=>send(color,'change'),onPick:()=>screenColorPicker.pick(),labels:{title:t('color'),done:t('close'),hue:t('pickerHue'),area:t('pickerArea'),hex:t('pickerHex'),pick:t('pickerScreen'),picking:t('pickerPicking'),pickError:t('pickerFailed')}});
+});
+document.addEventListener('click',async e=>{if(!storageReady)return;const card=e.target.closest('[data-pattern]');if(card){const type=card.dataset.pattern;mutate(()=>{const l=activePattern();cancelRedrawJob(l.id);redrawSnapshotSignatures.delete(l.id);clearRedrawSelection();const fresh=switchLayerPattern(l,type);doc.layers[doc.layers.indexOf(l)]=fresh;setLayerSelection([fresh.id]);});return;}
  const row=e.target.closest('.layer[data-layer-id]');if(row&&!e.target.closest('button,input,select,textarea,[data-action],.mask-layer-controls')){selectLayer(row.dataset.layerId,{toggle:e.ctrlKey||e.metaKey,range:e.shiftKey});return;}
  if(!e.target.closest('.save-control'))closeSaveMenu();
  const b=e.target.closest('[data-action]');if(!b||b.tagName==='SELECT')return;const a=b.dataset.action;
@@ -519,7 +556,7 @@ document.addEventListener('click',async e=>{if(!storageReady)return;const card=e
   else if(a==='redraw-generate')await generateSelectedRedraw();
   else if(a==='redraw-mode')mutate(()=>{active().params.mode=b.dataset.mode;});
   else if(a==='redraw-edit-mode'){redrawEditMode=b.dataset.mode;renderRedrawInspector();}
-  else if(a==='redraw-restore')mutate(()=>{const layer=active();cancelRedrawJob(layer.id);layer.redrawEdits={};selectedRedrawRegion=null;});
+  else if(a==='redraw-restore')mutate(()=>{const layer=active();cancelRedrawJob(layer.id);layer.redrawEdits={};clearRedrawSelection();});
  else if(a==='random')mutate(()=>{doc.seed=1+Math.floor(Math.random()*999998);const l=active();if(!['contour','barcode','ticks','rays'].includes(l.type)){const cs=pattern(l.type).controls.filter(c=>c.type==='range'&&c.key!=='strokeWidth'&&!/color/i.test(c.key));for(const c of cs.slice(0,3)){const step=c.step??1,base=pattern(l.type).defaults[c.key],randomMax=base>c.min?Math.min(c.max,c.min+(base-c.min)*2.5):c.max,span=randomMax-c.min;l.params[c.key]=clamp(Math.round((c.min+span*(.15+Math.random()*.65))/step)*step,c.min,c.max);}}});
  else if(a==='reset')mutate(()=>{const l=active(),fresh=resetLayerPattern(l);doc.layers[doc.layers.indexOf(l)]=fresh;});
  else if(a==='view-single'||a==='view-repeat'){repeat=a==='view-single'?1:3;fit();renderApp();}
@@ -669,9 +706,10 @@ function bindViewport(){
   finishPointer();flush();const common={viewport:vp,id:e.pointerId};
   if(space||canvasTool==='hand'||e.button===1){pointer={...common,mode:'pan',x:e.clientX,y:e.clientY,px:pan.x,py:pan.y};vp.classList.add('panning');}
   else if(beginMaskGesture(e,common)){/* The selected image moves independently of the artwork. */}
-  else if(active().type==='redraw'&&e.target.closest('#artboard')){
+  else if(active().type==='redraw'){
    const path=e.target.closest('[data-redraw-region]'),layer=path?doc.layers.find(item=>item.id===(path.dataset.layer||selected)):null;
-   if(layer&&layer.id===selected&&layer.type==='redraw'){const before=JSON.stringify(doc);if(applyRedrawRegionClick(layer,path.dataset.redrawRegion))pointer={...common,mode:'redraw',before};}
+   if(layer&&layer.id===selected&&layer.type==='redraw'){const before=redrawEditMode==='select'?null:JSON.stringify(doc);if(applyRedrawRegionClick(layer,path.dataset.redrawRegion,e.ctrlKey||e.metaKey))pointer={...common,mode:'redraw',before};}
+   else {clearRedrawSelection();renderRedrawInspector();}
   }
   else if(editableCells()&&e.target.closest('#artboard')){
    const point={x:e.clientX,y:e.clientY};pointer={...common,mode:'cell',editMode,seen:new Set(),before:JSON.stringify(doc),cells:captureCellCenters(),radius:brushSize*canvasUnit()/2,tolerance:Math.max(8,Math.min(24,(active().params.spacing??active().params.cellSize)*canvasUnit()/2)),last:point};editAt(e,true);
@@ -679,13 +717,13 @@ function bindViewport(){
   if(pointer){vp.setPointerCapture(e.pointerId);e.preventDefault();}lastCanvasPoint={clientX:e.clientX,clientY:e.clientY};updateBrushCursor(lastCanvasPoint);
  });
  vp.addEventListener('pointermove',e=>{
-  lastCanvasPoint={clientX:e.clientX,clientY:e.clientY};updateBrushCursor(lastCanvasPoint);updateConnectGuide();
+  hoverRedrawRegion(e.target);lastCanvasPoint={clientX:e.clientX,clientY:e.clientY};updateBrushCursor(lastCanvasPoint);updateConnectGuide();
   if(!pointer||pointer.id!==e.pointerId)return;
   if(pointer.mode==='pan'){pan={x:pointer.px+e.clientX-pointer.x,y:pointer.py+e.clientY-pointer.y};fitLayout();}
   else if(pointer.mode==='mask')dragImageMask(e);
   else if(pointer.mode!=='redraw')editAt(e);
  });
- vp.addEventListener('pointerleave',()=>{lastCanvasPoint=null;$('#brush-cursor').hidden=true;updateConnectGuide();});
+ vp.addEventListener('pointerleave',()=>{hoveredRedrawRegion=null;syncRedrawSelection();lastCanvasPoint=null;$('#brush-cursor').hidden=true;updateConnectGuide();});
  for(const event of ['pointerup','pointercancel','lostpointercapture'])vp.addEventListener(event,e=>{if(pointer?.id===e.pointerId)finishPointer();});
 }
 
@@ -858,7 +896,7 @@ function shapeLibraryDialog(){
  dialog(`<div class="eyebrow">C-TextureMaker / Shapes</div><h2>${esc(t('shapeLibrary'))}</h2><p class="intro">${esc(t('sharedShapeHint'))}</p><div class="shape-library-actions"><button class="button primary" data-action="import-shape" ${disabled}>${icon('plus')}${esc(t('uploadShape'))}</button><span class="mono">${sharedShapes.length} / 40</span></div>${shapeLibraryReady?'':`<p class="helper" role="alert">${esc(t('shapeLibraryReadFailed'))}</p>`}<div class="shape-grid">${sharedShapes.map(shape=>`<div class="shape-card ${shape.data===current?'active':''}"><button class="shape-apply" data-action="use-shape" data-id="${esc(shape.id)}" title="${esc(t('applyShape'))}: ${esc(shape.name)}"><span class="shape-preview"><img src="${esc(shape.data)}" alt=""></span><span class="shape-name" title="${esc(shape.name)}">${esc(shape.name)}</span></button><div class="shape-tools">${ib('rename-shape','pencil','renameShape',`data-id="${esc(shape.id)}" ${disabled}`)}${ib('remove-shape','trash','removeShape',`data-id="${esc(shape.id)}" ${disabled}`)}</div></div>`).join('')||`<p class="empty">${esc(t('noShapes'))}</p>`}</div>${current?`<div class="shape-current-actions">${!sharedShapes.some(s=>s.data===current)?`<button class="button" data-action="add-current-shape" ${disabled}>${icon('plus')}${esc(t('addCurrentShape'))}</button>`:''}<button class="button" data-action="clear-motif">${esc(t('clearMotif'))}</button></div>`:''}`,'shapes-modal');
 }
 function nameDialog(key,value,callback){const d=dialog(`<div class="eyebrow">C-TextureMaker</div><h2>${esc(t(key))}</h2><form id="name-form"><input id="name-input" class="text-input" aria-label="${esc(t(key))}" maxlength="80" required value="${esc(value)}"><div class="modal-footer"><button type="button" class="button" data-action="close-dialog">${esc(t('cancel'))}</button><button type="submit" class="button primary">${esc(t('add'))}</button></div></form>`);$('#name-form',d).addEventListener('submit',e=>{e.preventDefault();const name=$('#name-input',d).value.trim();if(!name)return;closeDialog();callback(name);});$('#name-input',d).select();}
-function replaceProject(parsed){finishPointer();cancelAllRedrawJobs();redrawSnapshotSignatures.clear();selectedRedrawRegion=null;pendingBefore=null;projectGeneration++;maskImportSequence++;doc=parsed;selected=doc.layers.find(isPatternLayer)?.id??doc.layers[0].id;selectedIds=new Set([selected]);selectionAnchor=selected;lastPatternId=selected;past=[];future=[];connectStart=null;savedSnapshot=JSON.stringify(doc);renderApp();fit();autosave();}
+function replaceProject(parsed){finishPointer();cancelAllRedrawJobs();redrawSnapshotSignatures.clear();clearRedrawSelection();hoveredRedrawRegion=null;pendingBefore=null;projectGeneration++;maskImportSequence++;doc=parsed;prepareRedrawDocument();selected=doc.layers.find(isPatternLayer)?.id??doc.layers[0].id;selectedIds=new Set([selected]);selectionAnchor=selected;lastPatternId=selected;past=[];future=[];connectStart=null;savedSnapshot=JSON.stringify(doc);renderApp();fit();autosave();}
 async function confirmUnsaved(){
  finishPointer();flush();if(!isDirty())return 'clean';if(unsavedPrompt)return unsavedPrompt;
  const d=dialog(`<div class="eyebrow">C-TextureMaker</div><h2>${esc(t('unsavedTitle'))}</h2><p class="intro">${esc(t('unsavedBody'))}</p><p class="unsaved-name">${esc(doc.name)}</p><div class="modal-footer"><button class="button" id="unsaved-cancel">${esc(t('cancel'))}</button><button class="button" id="unsaved-discard">${esc(t('discard'))}</button><button class="button primary" id="unsaved-save">${esc(t('save'))}</button></div>`,'unsaved-modal');
@@ -952,7 +990,7 @@ async function initializeApp(){
  setLayerSelection([selected]);
  try{const presets=await persistentStorage.getRecord('presets',[]);if(Array.isArray(presets))savedPresets=presets;}catch{/* Presets remain available in legacy storage when IndexedDB is unavailable. */}
  try{sharedShapes=normalizeShapeLibrary(await persistentStorage.getRecord('shapes',[]));shapeLibraryReady=true;}catch{/* Keep an unreadable library intact; show its error when opened. */}
- savedSnapshot=restored?null:JSON.stringify(doc);storageReady=true;saveState=storageAvailable?(restored?'autosaved':'saveReady'):'storageUnavailable';
+ prepareRedrawDocument();savedSnapshot=restored?null:JSON.stringify(doc);storageReady=true;saveState=storageAvailable?(restored?'autosaved':'saveReady'):'storageUnavailable';
  $('#app').inert=false;$('#app').setAttribute('aria-busy','false');renderApp();
   document.documentElement.dataset.appReady='true';nativeHost?.postMessage({type:'window',action:'close-guard-ready'});
  if(restored)toast('restored');if(prefs.motion!==false)playEntrance();

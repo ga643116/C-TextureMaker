@@ -17,7 +17,7 @@ import {
 } from '../app/engine.mjs';
 
 const patternIds = PATTERNS.map(pattern => pattern.id);
-const settingKeys = ['opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','redrawData','redrawEdits','redrawPalette','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask','imageSource'];
+const settingKeys = ['opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','redrawData','redrawEdits','redrawPalette','redrawPlacement','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask','imageSource'];
 const png = (() => {
   const bytes = Buffer.alloc(33);
   Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]).copy(bytes);

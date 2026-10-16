@@ -4,6 +4,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 export const TEXT = {
+ redrawModeOutline:['輪廓線','Outlines','輪郭線'],
+ redrawSelectedCount:['已選取 {count} 個區塊','{count} regions selected','{count} 個の領域を選択'],
+ pickerHue:['色相','Hue','色相'],
+ pickerArea:['飽和度與明度','Saturation and brightness','彩度と明度'],
+ pickerHex:['HEX 色碼','HEX color','HEX カラー'],
+ pickerScreen:['螢幕取色','Screen picker','画面から取得'],
+ pickerPicking:['點擊螢幕取色，Esc 取消。','Click a screen color; Esc cancels.','画面をクリックして取得。Esc で中止。'],
+ pickerFailed:['螢幕取色失敗，請再試一次。','Screen color selection failed. Please retry.','画面の色を取得できませんでした。再試行してください。'],
  imageSource:["圖片來源", "Image source", "画像ソース"],
  imageSourceAllButton:["全圖層", "All layers", "全レイヤー"],
  imageSourceBelowButton:["圖片", "Image", "画像"],
@@ -144,10 +152,10 @@ Object.assign(TEXT, {
  redrawLinesSection:['線稿與外輪廓','Line art and outline','線画と外枠'],
  redrawEditsTitle:['區塊編輯','Region edits','領域編集'],
  redrawEditSelect:['選取','Select','選択'],
- redrawEditErase:['隱藏','Hide','非表示'],
+ redrawEditErase:['隱藏／顯示','Hide / show','非表示／表示'],
  redrawEditRecolor:['改色','Recolor','色を変更'],
  redrawToolColor:['工具顏色','Tool color','ツールの色'],
- redrawRegionSelectHint:['在畫布點選色塊，再調整顯示狀態或顏色。','Select a region on the canvas to change its visibility or color.','キャンバスで色面を選び、表示状態や色を変更します。'],
+ redrawRegionSelectHint:['點選區塊進行編輯；Ctrl＋點擊可複選，點擊空白處解除選取。隱藏工具可再次點擊恢復顯示。','Select a region; Ctrl-click to select more, or click blank space to deselect. Click again with Hide / show to restore a region.','領域をクリックして編集。Ctrl＋クリックで複数選択、空白をクリックで解除。非表示／表示ツールは再クリックで表示を戻します。'],
  redrawNoData:['匯入圖片並生成後，可在畫布上編輯色塊。','Import an image and generate regions to edit them on the canvas.','画像を読み込んで生成すると、キャンバス上で色面を編集できます。'],
  redrawOriginalColor:['原色','Original','元の色'],
  redrawCurrentColor:['目前顏色','Current color','現在の色'],

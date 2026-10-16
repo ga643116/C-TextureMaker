@@ -35,7 +35,7 @@ test('generated geometry and edits survive project, pattern history, presets and
 
 test('older active layers and cached snapshots restore with empty redraw state',()=>{
  const d=createDocument();let l=switchLayerPattern(d.layers[0],'dots');
- for(const state of [l,...Object.values(l.patternSettings)])for(const key of ['redrawData','redrawEdits','redrawPalette'])delete state[key];
+ for(const state of [l,...Object.values(l.patternSettings)])for(const key of ['redrawData','redrawEdits','redrawPalette','redrawPlacement'])delete state[key];
  d.layers=[l];const normalized=normalizeDocument(d);
  assert.equal(normalized.layers[0].redrawData,null);
  assert.deepEqual(normalized.layers[0].redrawEdits,{});

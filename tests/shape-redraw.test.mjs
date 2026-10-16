@@ -9,11 +9,14 @@ import {
   buildRedraw,
   getRedrawPalette,
   normalizeRedrawData,
+  prepareRedrawData,
   normalizeRedrawEdits,
   redrawRegionColor,
   renderRedraw,
 } from '../app/shape-redraw.mjs';
 import { handleRedrawMessage } from '../app/redraw-worker.mjs';
+import { Resvg } from '@resvg/resvg-js';
+import { PNG } from 'pngjs';
 
 function image(width, height, color = [0, 0, 0, 0]) {
   const rgba = new Uint8ClampedArray(width * height * 4);
@@ -32,6 +35,13 @@ function regionData() {
     ],
     lines: [],
   };
+}
+function rasterSvg(body, width = 128, height = 128) {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '">' + body + '</svg>';
+  return PNG.sync.read(new Resvg(svg).render().asPng());
+}
+function pixel(imageData, x, y) {
+  return [...imageData.data.subarray((y * imageData.width + x) * 4, (y * imageData.width + x) * 4 + 4)];
 }
 
 test('transparent cutouts stay holes and disconnected same-color shapes get separate regions', () => {
@@ -131,6 +141,72 @@ test('palette modes, region override and hidden preview/export behavior are stab
   const output = renderRedraw(layer, { width: 128, height: 128 });
   assert.doesNotMatch(output, /redraw-layer-a-r1/);
   assert.doesNotMatch(output, /data-redraw-region/);
+});
+
+test('prepared redraw data is detached, deeply immutable and mutable inputs still revalidate', () => {
+  const source = regionData();
+  const prepared = prepareRedrawData(source);
+  assert.notEqual(prepared, source);
+  assert.equal(prepared.regions[0].rings[0][0], 8);
+  assert.ok(Object.isFrozen(prepared));
+  assert.ok(Object.isFrozen(prepared.regions));
+  assert.ok(Object.isFrozen(prepared.regions[0]));
+  assert.ok(Object.isFrozen(prepared.regions[0].rings[0]));
+  assert.equal(normalizeRedrawData(prepared), prepared, 'only the prepared immutable copy is safely reused');
+  assert.throws(() => { prepared.regions[0].rings[0][0] = 10; }, TypeError);
+  source.regions[0].rings[0][0] = 10;
+  assert.equal(prepared.regions[0].rings[0][0], 8, 'prepared geometry does not alias mutable source data');
+
+  const mutable = regionData();
+  const copy = normalizeRedrawData(mutable);
+  assert.notEqual(copy, mutable);
+  mutable.regions[0].rings[0][0] = Infinity;
+  assert.throws(() => normalizeRedrawData(mutable), /coordinate/);
+  assert.throws(() => prepareRedrawData(mutable), /coordinate/);
+  assert.equal(copy.regions[0].rings[0][0], 8, 'ordinary normalization returns an independent copy');
+});
+
+test('outline mode strokes every region ring without fill and respects line toggles and hidden previews', () => {
+  const data = regionData();
+  data.lines = [[[46, 80, 56, 80, 56, 90, 46, 90]]];
+  const layer = {
+    id: 'outline<&a', redrawData: prepareRedrawData(data), redrawEdits: { r1: { hidden: true } },
+    params: { mode: 'outline', paletteMode: 'original', straightness: 0, lines: true, lineWidth: 4, lineColor: '#ff0000', outlineWidth: 10 },
+  };
+  const svg = renderRedraw(layer, { width: 128, height: 128 });
+  const outlined = svg.match(/<path id="redraw-outline--a-r0"[^>]*>/)?.[0];
+  assert.ok(outlined);
+  assert.match(outlined, /fill="none"/);
+  assert.match(outlined, /stroke="#ff0000"/);
+  assert.match(outlined, /stroke-width="4"/);
+  assert.equal((outlined.match(/Z/g) || []).length, 2, 'the outer ring and hole are both stroked');
+  assert.doesNotMatch(svg, /stroke-width="10"/, 'legacy outlineWidth does not double the outline-mode stroke');
+  assert.match(svg, /id="redraw-outline--a-line-0"/);
+  assert.doesNotMatch(svg, /data-redraw-line-color|data-redraw-line-fill/, 'export SVG has no preview-only update metadata');
+
+  const imageData = rasterSvg(svg);
+  assert.deepEqual(pixel(imageData, 8, 30), [255, 0, 0, 255], 'the outer boundary is visible');
+  assert.deepEqual(pixel(imageData, 14, 30), [0, 0, 0, 0], 'the region interior stays transparent');
+  assert.deepEqual(pixel(imageData, 20, 50), [255, 0, 0, 255], 'the hole boundary is visible');
+  assert.deepEqual(pixel(imageData, 30, 50), [0, 0, 0, 0], 'the hole interior stays transparent');
+  assert.deepEqual(pixel(imageData, 50, 85), [255, 0, 0, 255], 'enabled extracted lineart remains visible');
+  assert.deepEqual(pixel(imageData, 80, 30), [0, 0, 0, 0], 'hidden regions emit no outline');
+
+  const preview = renderRedraw(layer, { width: 128, height: 128 }, { preview: true });
+  const previewVisible = preview.match(/<path id="redraw-outline--a-r0"[^>]*>/)?.[0];
+  const previewHidden = preview.match(/<path[^>]*data-redraw-region="r1"[^>]*>/)?.[0];
+  const previewLine = preview.match(/<path id="redraw-outline--a-line-0"[^>]*>/)?.[0];
+  assert.match(previewVisible, /data-redraw-region="r0"/);
+  assert.match(previewVisible, /data-redraw-line-color="outline&lt;&amp;a"/);
+  assert.match(previewHidden, /fill-opacity="0"/);
+  assert.doesNotMatch(previewHidden, /stroke=|data-redraw-line-color/);
+  assert.match(previewLine, /data-redraw-line-color="outline&lt;&amp;a"/);
+  assert.match(previewLine, /data-redraw-line-fill="outline&lt;&amp;a"/);
+
+  layer.params.lines = false;
+  const linesOff = renderRedraw(layer, { width: 128, height: 128 });
+  assert.doesNotMatch(linesOff, /redraw-outline--a-line-0/);
+  assert.deepEqual(pixel(rasterSvg(linesOff), 50, 85), [0, 0, 0, 0], 'disabled extracted lineart is absent in PNG output');
 });
 
 test('normalizer accepts corner-touching holes and preserves both cutouts', () => {

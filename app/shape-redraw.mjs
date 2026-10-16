@@ -9,6 +9,9 @@ const MAX_EDGE = 1024;
 const MIN_EDGE = 8;
 const MAX_REGIONS = 2048;
 const MAX_COORDINATES = 500000;
+const PREPARED_REDRAW_DATA = new WeakSet();
+const REDRAW_GEOMETRY_CACHE = new WeakMap();
+const MAX_CACHED_GEOMETRIES = 3;
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const PALETTES = {
   poster: ['#e8dcc0', '#d52b1e', '#1a1a1a'],
@@ -152,6 +155,7 @@ function validateFlatRing(ring, width, height, counter, label) {
 
 export function normalizeRedrawData(value) {
   if (value === undefined || value === null) return null;
+  if (PREPARED_REDRAW_DATA.has(value)) return value;
   exactKeys(value, ['version', 'width', 'height', 'detail', 'regions', 'lines'], 'redraw data');
   if (value.version !== 1 || !validDimension(value.width) || !validDimension(value.height) ||
       !Number.isInteger(value.detail) || value.detail < 0 || value.detail > 100 ||
@@ -191,6 +195,20 @@ export function normalizeRedrawData(value) {
     lines.push(line.map(ring => validateFlatRing(ring, value.width, value.height, counter, 'redraw line')));
   }
   return { version: 1, width: value.width, height: value.height, detail: value.detail, regions, lines };
+}
+
+function deepFreeze(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  for (const child of Object.values(value)) deepFreeze(child);
+  return Object.freeze(value);
+}
+
+export function prepareRedrawData(value) {
+  const data = normalizeRedrawData(value);
+  if (!data) return null;
+  deepFreeze(data);
+  PREPARED_REDRAW_DATA.add(data);
+  return data;
 }
 
 export function normalizeRedrawEdits(value, data) {
@@ -331,8 +349,34 @@ function pathData(rings, scaleX, scaleY) {
   }
   return commands.join('');
 }
-function regionPathData(region, epsilon, scaleX, scaleY) {
-  return pathData(simplifyRings(region.rings, epsilon), scaleX, scaleY);
+function buildRedrawGeometry(data, epsilon) {
+  const regionPaths = [];
+  const outerPaths = [];
+  for (const region of data.regions) {
+    const rings = simplifyRings(region.rings, epsilon);
+    regionPaths.push(pathData(rings, 1, 1));
+    outerPaths.push(pathData([rings[0]], 1, 1));
+  }
+  const linePaths = data.lines.map(line => pathData(simplifyRings(line, epsilon), 1, 1));
+  return { regionPaths, outerPaths, linePaths };
+}
+function redrawGeometry(data, epsilon) {
+  if (!PREPARED_REDRAW_DATA.has(data)) return buildRedrawGeometry(data, epsilon);
+  let cache = REDRAW_GEOMETRY_CACHE.get(data);
+  if (!cache) {
+    cache = new Map();
+    REDRAW_GEOMETRY_CACHE.set(data, cache);
+  }
+  const cached = cache.get(epsilon);
+  if (cached) {
+    cache.delete(epsilon);
+    cache.set(epsilon, cached);
+    return cached;
+  }
+  const geometry = buildRedrawGeometry(data, epsilon);
+  if (cache.size >= MAX_CACHED_GEOMETRIES) cache.delete(cache.keys().next().value);
+  cache.set(epsilon, geometry);
+  return geometry;
 }
 function areaBounds(rings) {
   let minY = Infinity, minX = Infinity;
@@ -353,55 +397,63 @@ export function renderRedraw(layer, doc, { preview = false } = {}) {
   if (!data || !data.regions.length) return '';
   const edits = normalizeRedrawEdits(layer?.redrawEdits, data);
   const params = layer?.params || {};
+  const outlineMode = params.mode === 'outline';
   const docWidth = Number.isFinite(doc?.width) && doc.width > 0 ? doc.width : data.width;
   const docHeight = Number.isFinite(doc?.height) && doc.height > 0 ? doc.height : data.height;
   const scaleX = docWidth / data.width, scaleY = docHeight / data.height;
+  const maxScale = Math.max(scaleX, scaleY, 1e-6);
   const straightness = optionNumber(params, 'straightness', 0);
-  const epsilon = straightness / Math.max(scaleX, scaleY, 1e-6);
+  const epsilon = straightness / maxScale;
+  const geometry = redrawGeometry(data, epsilon);
   const lineWidth = optionNumber(params, 'lineWidth', 1);
   const outlineWidth = optionNumber(params, 'outlineWidth', 0);
   const lineColor = validHex(params.lineColor) ? canonicalHex(params.lineColor) : '#202020';
   const showLines = params.lines === true && lineWidth > 0 && data.lines.length > 0;
   const id = cleanId(layer?.id);
+  const escapedLayerId = escapeAttr(layer?.id);
+  const lineColorAttrs = preview ? ' data-redraw-line-color="' + escapedLayerId + '"' : '';
+  const lineFillAttrs = preview ? ' data-redraw-line-fill="' + escapedLayerId + '"' : '';
   const clipId = 'redraw-' + id + '-visible';
-  const visible = data.regions.filter(region => edits[region.id]?.hidden !== true);
+  const visibleIndices = [];
+  for (let index = 0; index < data.regions.length; index++) {
+    if (edits[data.regions[index].id]?.hidden !== true) visibleIndices.push(index);
+  }
   const output = ['<g transform="scale(' + fmt(scaleX) + ' ' + fmt(scaleY) + ')">'];
 
-  if (outlineWidth > 0 && visible.length) {
-    output.push('<g fill="none" stroke="' + lineColor + '" stroke-width="' + fmt(outlineWidth / Math.max(scaleX, scaleY, 1e-6)) + '" stroke-linejoin="round" pointer-events="none">');
-    for (const region of visible) {
-      const outer = [simplifyRings(region.rings, epsilon)[0]];
-      output.push('<path d="' + pathData(outer, 1, 1) + '"/>');
-    }
+  if (!outlineMode && outlineWidth > 0 && visibleIndices.length) {
+    output.push('<g fill="none" stroke="' + lineColor + '" stroke-width="' + fmt(outlineWidth / maxScale) + '" stroke-linejoin="round" pointer-events="none"' + lineColorAttrs + '>');
+    for (const index of visibleIndices) output.push('<path d="' + geometry.outerPaths[index] + '"/>');
     output.push('</g>');
   }
 
   output.push('<defs><clipPath id="' + clipId + '" clipPathUnits="userSpaceOnUse">');
-  for (const region of visible) output.push('<path d="' + regionPathData(region, epsilon, 1, 1) + '" fill-rule="evenodd" clip-rule="evenodd"/>');
+  for (const index of visibleIndices) output.push('<path d="' + geometry.regionPaths[index] + '" fill-rule="evenodd" clip-rule="evenodd"/>');
   output.push('</clipPath></defs>');
 
   const paletteLayer = { ...layer, redrawData: data, redrawEdits: edits };
-  const palette = getRedrawPalette(paletteLayer);
-  const paintOrder = preview ? data.regions : visible;
-  for (const region of paintOrder) {
+  const palette = outlineMode ? [] : getRedrawPalette(paletteLayer);
+  const paintOrder = preview
+    ? data.regions.map((region, index) => ({ region, index }))
+    : visibleIndices.map(index => ({ region: data.regions[index], index }));
+  for (const { region, index } of paintOrder) {
     const hidden = edits[region.id]?.hidden === true;
-    const source = region;
-    const color = resolveRegionColor(source, paletteLayer, palette);
-    const d = regionPathData(source, epsilon, 1, 1);
-    const attrs = preview ? ' data-redraw-region="' + region.id + '" data-layer="' + escapeAttr(layer.id) + '" pointer-events="all"' : '';
+    const color = outlineMode ? region.color : resolveRegionColor(region, paletteLayer, palette);
+    const d = geometry.regionPaths[index];
+    const attrs = preview ? ' data-redraw-region="' + region.id + '" data-layer="' + escapedLayerId + '" pointer-events="all"' : '';
     if (preview && hidden) {
       output.push('<path id="redraw-' + id + '-' + region.id + '" d="' + d + '" fill="' + color + '" fill-opacity="0" fill-rule="evenodd"' + attrs + '/>');
+    } else if (outlineMode) {
+      output.push('<path id="redraw-' + id + '-' + region.id + '" d="' + d + '" fill="none" fill-rule="evenodd" clip-rule="evenodd" stroke="' + lineColor + '" stroke-width="' + fmt(lineWidth / maxScale) + '" stroke-linejoin="round"' + lineColorAttrs + attrs + '/>');
     } else {
       const seam = straightness > 0 ? Math.min(0.75, straightness * 0.06) : 0;
       const stroke = seam ? ' stroke="' + color + '" stroke-width="' + fmt(seam) + '" stroke-linejoin="round"' : '';
       output.push('<path id="redraw-' + id + '-' + region.id + '" d="' + d + '" fill="' + color + '" fill-rule="evenodd" clip-rule="evenodd"' + stroke + attrs + '/>');
     }
   }
-  if (showLines && visible.length) {
+  if (showLines && visibleIndices.length) {
     output.push('<g clip-path="url(#' + clipId + ')" pointer-events="none">');
-    for (let index = 0; index < data.lines.length; index++) {
-      const line = data.lines[index], d = pathData(simplifyRings(line, epsilon), 1, 1);
-      output.push('<path id="redraw-' + id + '-line-' + index + '" d="' + d + '" fill="' + lineColor + '" fill-rule="evenodd" stroke="' + lineColor + '" stroke-width="' + fmt(lineWidth / Math.max(scaleX, scaleY, 1e-6)) + '" stroke-linejoin="round"/>');
+    for (let index = 0; index < geometry.linePaths.length; index++) {
+      output.push('<path id="redraw-' + id + '-line-' + index + '" d="' + geometry.linePaths[index] + '" fill="' + lineColor + '" fill-rule="evenodd" stroke="' + lineColor + '" stroke-width="' + fmt(lineWidth / maxScale) + '" stroke-linejoin="round"' + lineColorAttrs + lineFillAttrs + '/>');
     }
     output.push('</g>');
   }

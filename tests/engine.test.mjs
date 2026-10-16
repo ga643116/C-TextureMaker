@@ -32,7 +32,7 @@ test('exposes the eighteen localized pattern schemas and renders each default la
 test('creates a fresh contract-shaped document and applies layer transforms and transparency', () => {
   const doc = createDocument();
   assert.deepEqual(Object.keys(doc), ['version','name','width','height','transparent','background','seamless','seed','layers']);
-  assert.deepEqual(Object.keys(doc.layers[0]), ['id','type','visible','opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','redrawData','redrawEdits','redrawPalette','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask','imageSource','patternSettings']);
+  assert.deepEqual(Object.keys(doc.layers[0]), ['id','type','visible','opacity','color','secondary','rotation','scale','offsetX','offsetY','params','pixelPalette','redrawData','redrawEdits','redrawPalette','redrawPlacement','hiddenCells','customMotif','motifTint','cellLinks','linkWidth','mask','imageSource','patternSettings']);
   assert.equal(doc.layers[0].type, 'contour');
   const transparent = renderSVG(doc);
   assert.doesNotMatch(transparent, /<rect width="1024" height="1024" fill="#eeeae2"/);
