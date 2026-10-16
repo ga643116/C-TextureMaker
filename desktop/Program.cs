@@ -1387,6 +1387,8 @@ namespace CTextureMaker
             private const int WmSysKeyUp = 0x0105;
             private const int WmLButtonDown = 0x0201;
             private const int WmLButtonUp = 0x0202;
+            private const int WmRButtonDown = 0x0204;
+            private const int WmRButtonUp = 0x0205;
             private const uint VirtualKeyEscape = 0x1B;
             private const int TimeoutMilliseconds = 175000;
             private const uint InvalidPixel = 0xFFFFFFFF;
@@ -1403,6 +1405,7 @@ namespace CTextureMaker
             private bool _finishQueued;
             private bool _hasSelection;
             private bool _selectionReleased;
+            private bool _rightCancelPressed;
             private bool _selectionSampleQueued;
             private bool _selectionSampleRead;
             private Point _selectedPoint;
@@ -1533,8 +1536,18 @@ namespace CTextureMaker
             private IntPtr MouseHookCallback(int code, IntPtr messagePointer, IntPtr dataPointer)
             {
                 int message = code >= 0 ? messagePointer.ToInt32() : 0;
+                if (code >= 0 && (message == WmRButtonDown || message == WmRButtonUp))
+                {
+                    if (message == WmRButtonDown)
+                        _rightCancelPressed = true;
+                    else if (_rightCancelPressed)
+                        RequestFinish(true, true, Color.Empty, null);
+                    return new IntPtr(1);
+                }
                 if (code >= 0 && (message == WmLButtonDown || message == WmLButtonUp))
                 {
+                    if (_rightCancelPressed)
+                        return new IntPtr(1);
                     try
                     {
                         if (message == WmLButtonDown && !_hasSelection)
@@ -1635,7 +1648,7 @@ namespace CTextureMaker
 
             private void CompleteSelection()
             {
-                if (_disposed || _completed || !_selectionReleased || !_selectionSampleRead)
+                if (_disposed || _completed || _rightCancelPressed || !_selectionReleased || !_selectionSampleRead)
                     return;
 
                 if (String.IsNullOrEmpty(_selectionError))

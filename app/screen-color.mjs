@@ -21,14 +21,17 @@ export function createScreenColorPicker({host,EyeDropper=globalThis.EyeDropper,t
   if(busy)throw new Error('Screen color selection is already active');
   busy=true;
   try{
+   if(native)return await pickNative();
    if(typeof EyeDropper==='function'){
-    try{return color((await new EyeDropper().open())?.sRGBHex);}
+    const controller=new AbortController(),target=globalThis.document;
+    const cancelRight=event=>{if(event.type==='contextmenu'||event.button===2){event.preventDefault();controller.abort();}};
+    target?.addEventListener('pointerdown',cancelRight,{capture:true});target?.addEventListener('contextmenu',cancelRight,{capture:true});
+    try{return color((await new EyeDropper().open({signal:controller.signal}))?.sRGBHex);}
     catch(error){
      if(error?.name==='AbortError')return null;
-     if(!native||!['NotAllowedError','NotSupportedError','SecurityError','OperationError'].includes(error?.name))throw error;
-    }
+     throw error;
+    }finally{target?.removeEventListener('pointerdown',cancelRight,{capture:true});target?.removeEventListener('contextmenu',cancelRight,{capture:true});}
    }
-   if(native)return await pickNative();
    throw new Error('Screen color selection is unavailable');
   }finally{busy=false;}
  }};

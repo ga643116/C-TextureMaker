@@ -28,20 +28,23 @@ test('browser eyedropper handles color, Escape and missing capability without sc
  await assert.rejects(createScreenColorPicker({EyeDropper:class{async open(){return {sRGBHex:'invalid'};}}}).pick(),/Invalid/);
 });
 
-test('standard eyedropper is preferred even inside the desktop host and cancellation does not open fallback',async()=>{
- const h=host();
- assert.equal(await createScreenColorPicker({host:h,EyeDropper:class{async open(){return {sRGBHex:'#FEDCBA'};}}}).pick(),'#fedcba');
- assert.equal(h.messages.length,0,'supported built-in picker never opens a native fallback window');
- assert.equal(await createScreenColorPicker({host:h,EyeDropper:class{async open(){throw Object.assign(Error('cancel'),{name:'AbortError'});}}}).pick(),null);
- assert.equal(h.messages.length,0,'Escape never launches a second picker');
+test('desktop host controls mouse buttons instead of delegating confirmation to the browser picker',async()=>{
+ const h=host();let browserCalls=0;
+ const picker=createScreenColorPicker({host:h,EyeDropper:class{async open(){browserCalls++;return {sRGBHex:'#fedcba'};}}});
+ const pending=picker.pick();assert.equal(h.messages.length,1);assert.equal(browserCalls,0);
+ h.reply({data:{type:'pick-color-result',id:h.messages[0].id,ok:true,cancelled:true}});
+ assert.equal(await pending,null,'native right-click cancellation leaves the selected color unchanged');
+ const selected=picker.pick();h.reply({data:{type:'pick-color-result',id:h.messages[1].id,ok:true,color:'#13579b'}});
+ assert.equal(await selected,'#13579b');assert.equal(browserCalls,0);
 });
-test('unavailable or denied built-in eyedropper uses the desktop fallback exactly once',async()=>{
- for(const name of ['NotAllowedError','NotSupportedError','SecurityError','OperationError']){
-  const h=host(),picker=createScreenColorPicker({host:h,EyeDropper:class{async open(){throw Object.assign(Error('unsupported'),{name});}}});
-  const result=picker.pick();await Promise.resolve();
-  assert.equal(h.messages.length,1);h.reply({data:{type:'pick-color-result',id:h.messages[0].id,ok:true,color:'#13579b'}});
-  assert.equal(await result,'#13579b');
- }
+test('browser right-click cancellation uses AbortSignal and removes temporary listeners',async()=>{
+ const original=globalThis.document,target=new EventTarget();globalThis.document=target;
+ try{
+  const picker=createScreenColorPicker({EyeDropper:class{open({signal}){return new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Object.assign(Error('cancel'),{name:'AbortError'})),{once:true}));}}});
+  const pending=picker.pick(),event=new Event('contextmenu',{cancelable:true});target.dispatchEvent(event);
+  assert.equal(event.defaultPrevented,true);assert.equal(await pending,null);
+  const after=new Event('contextmenu',{cancelable:true});target.dispatchEvent(after);assert.equal(after.defaultPrevented,false,'listener removed after cancellation');
+ }finally{if(original===undefined)delete globalThis.document;else globalThis.document=original;}
 });
 test('browser selection rejects overlapping requests and releases busy state after cancellation',async()=>{
  let finish;const picker=createScreenColorPicker({EyeDropper:class{open(){return new Promise(resolve=>finish=resolve);}}});

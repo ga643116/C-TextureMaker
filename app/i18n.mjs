@@ -10,7 +10,7 @@ export const TEXT = {
  pickerArea:['飽和度與明度','Saturation and brightness','彩度と明度'],
  pickerHex:['HEX 色碼','HEX color','HEX カラー'],
  pickerScreen:['螢幕取色','Screen picker','画面から取得'],
- pickerPicking:['點擊螢幕取色，Esc 取消。','Click a screen color; Esc cancels.','画面をクリックして取得。Esc で中止。'],
+ pickerPicking:['左鍵取色，右鍵或 Esc 取消。','Left-click to pick; right-click or Esc cancels.','左クリックで取得、右クリックまたは Esc で中止。'],
  pickerFailed:['螢幕取色失敗，請再試一次。','Screen color selection failed. Please retry.','画面の色を取得できませんでした。再試行してください。'],
  imageSource:["圖片來源", "Image source", "画像ソース"],
  imageSourceAllButton:["全圖層", "All layers", "全レイヤー"],

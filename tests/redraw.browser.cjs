@@ -76,7 +76,7 @@ async function assertNoHorizontalOverflow(page,label){
   await context.addInitScript(()=>{
    localStorage.setItem('ctm.preferences',JSON.stringify({lang:'zh',theme:'dark',motion:false}));
    window.__screenPickCalls=0;window.__cancelScreenPick=false;
-   window.EyeDropper=class{async open(){window.__screenPickCalls++;if(window.__holdScreenPick)return new Promise(resolve=>window.__resolveScreenPick=resolve);if(window.__cancelScreenPick)throw new DOMException('Cancelled','AbortError');return {sRGBHex:'#123abc'};}};
+   window.EyeDropper=class{async open({signal}={}){window.__screenPickCalls++;if(window.__holdScreenPick)return new Promise((resolve,reject)=>{window.__resolveScreenPick=resolve;signal?.addEventListener('abort',()=>reject(new DOMException('Cancelled','AbortError')),{once:true});});if(window.__cancelScreenPick)throw new DOMException('Cancelled','AbortError');return {sRGBHex:'#123abc'};}};
   });
   const origin='http://127.0.0.1:'+server.address().port+'/';
   const blockedRequests=[],pageErrors=[],workerURLs=[];
@@ -169,8 +169,10 @@ async function assertNoHorizontalOverflow(page,label){
   const firstId=regionIds[0],firstRegion=page.locator('#artboard svg [data-redraw-region="'+firstId+'"]');
 
   await page.locator('[data-action="redraw-mode"][data-mode="outline"]').click();
+  await page.waitForFunction(()=>[...document.querySelectorAll('#artboard [data-redraw-region]')].every(node=>node.getAttribute('fill')==='none'));
   assert.ok(await page.locator('#artboard [data-redraw-region]').evaluateAll(nodes=>nodes.every(node=>node.getAttribute('fill')==='none')),'outline mode hides region fills');
   await page.locator('[data-action="redraw-mode"][data-mode="blocks"]').click();
+  await page.waitForFunction(()=>[...document.querySelectorAll('#artboard [data-redraw-region]')].some(node=>node.getAttribute('fill')!=='none'));
   const secondId=regionIds[1],secondRegion=page.locator('#artboard [data-redraw-region="'+secondId+'"]');
   await firstRegion.dispatchEvent('pointermove');
   assert.equal(await firstRegion.evaluate(node=>node.classList.contains('redraw-hover')),true,'hover reveals the region boundary');
@@ -188,6 +190,7 @@ async function assertNoHorizontalOverflow(page,label){
   assert.equal(await page.locator('#artboard .redraw-selected').count(),0,'blank canvas clears selection');
   await firstRegion.click({force:true});await secondRegion.click({force:true,modifiers:['Control']});
   await setColor(page,'#redraw-region-color','#331122');
+  await page.waitForFunction(ids=>ids.every(id=>document.querySelector('#artboard [data-redraw-region="'+id+'"]')?.getAttribute('fill')==='#331122'),[firstId,secondId]);
   assert.equal(await firstRegion.getAttribute('fill'),'#331122');assert.equal(await secondRegion.getAttribute('fill'),'#331122');
   await page.locator('[data-action="undo"]').click();
   assert.notEqual(await firstRegion.getAttribute('fill'),'#331122','bulk recolor is one undo step');
@@ -222,6 +225,13 @@ async function assertNoHorizontalOverflow(page,label){
   await page.evaluate(()=>window.__cancelScreenPick=true);await page.locator('.cp-pick').click();
   await page.waitForFunction(()=>!document.querySelector('.cp-pick')?.disabled);
   assert.equal(await page.locator('#redraw-tool-color').inputValue(),'#123abc','cancelling eyedropper preserves the prior color');
+  await page.evaluate(()=>{window.__cancelScreenPick=false;window.__holdScreenPick=true;});
+  await page.locator('.cp-pick').click();await page.waitForFunction(()=>document.documentElement.classList.contains('screen-picking'));
+  assert.equal(await page.evaluate(()=>document.documentElement.dispatchEvent(new MouseEvent('contextmenu',{button:2,bubbles:true,cancelable:true}))),false,'right-click is consumed while screen picking');
+  await page.waitForFunction(()=>!document.documentElement.classList.contains('screen-picking')&&!document.querySelector('.cp-pick')?.disabled);
+  assert.equal(await page.locator('#redraw-tool-color').inputValue(),'#123abc','right-click cancellation does not apply a screen color');
+  await page.evaluate(()=>window.__holdScreenPick=false);
+
   await page.screenshot({path:path.join(output,'shape-redraw-picker.png'),fullPage:true});
   await page.locator('.cp-done').click();
 
@@ -383,6 +393,30 @@ async function assertNoHorizontalOverflow(page,label){
   assert.equal(await page.locator('#p-paletteMode').inputValue(),'original','unchanged palette popover does not silently switch to custom');
   assert.equal(await isDirty(),'false');
 
+
+  // Small mode edits coexist with full project snapshots in the same undo chain.
+  const modeProject=structuredClone(large);modeProject.name='Mixed mode undo regression';
+  const modeLayer=modeProject.layers.find(layer=>layer.id===redrawLayerId);modeLayer.params.mode='blocks';modeLayer.opacity=1;
+  await load(modeProject,'redraw-mode-history.ctm');
+  const clickMode=async mode=>{await page.locator('[data-action="redraw-mode"][data-mode="'+mode+'"]').click();await page.waitForFunction(expected=>document.querySelector('[data-action="redraw-mode"][aria-pressed="true"]')?.dataset.mode===expected,mode);};
+  const currentMode=()=>page.locator('[data-action="redraw-mode"][aria-pressed="true"]').getAttribute('data-mode');
+  await page.evaluate(()=>window.__retainedViewport=document.querySelector('#viewport'));
+  await clickMode('three');
+  assert.equal(await page.evaluate(()=>window.__retainedViewport===document.querySelector('#viewport')),true,'mode changes preserve the workspace DOM');
+  await setRange(page,opacity,.6);await clickMode('outline');
+  for(const [mode,value] of [['three',.6],['three',1],['blocks',1]]){
+   await page.locator('[data-action="undo"]').click();assert.equal(await currentMode(),mode);assert.equal(Number(await page.locator(opacity).inputValue()),value);
+  }
+  for(const [mode,value] of [['three',1],['three',.6],['outline',.6]]){
+   await page.locator('[data-action="redo"]').click();assert.equal(await currentMode(),mode);assert.equal(Number(await page.locator(opacity).inputValue()),value);
+  }
+  await page.locator('[data-action="undo"]').click();await clickMode('blocks');await clickMode('blocks');
+  assert.equal(await page.locator('[data-action="redo"]').isDisabled(),true,'mode changes clear the redo branch');
+  await page.locator('[data-action="undo"]').click();assert.equal(await currentMode(),'three','clicking the current mode does not create an extra undo step');
+  const modeSaved=await save();assert.equal(modeSaved.layers.find(layer=>layer.id===redrawLayerId).params.mode,'three');
+  assert.equal(modeSaved.layers.find(layer=>layer.id===redrawLayerId).opacity,.6);
+  assert.deepEqual(modeSaved.layers.find(layer=>layer.id===sourceId).colorMap,modeProject.layers.find(layer=>layer.id===sourceId).colorMap,'mode undo preserves the source image bytes');
+  console.log('PASS right-click screen-color cancellation and mixed mode/parameter undo, redo, branching, saved state and workspace retention');
   console.log('PASS outline mode, Ctrl multi-selection, deselect, toggle-hide, hover, shared color picker, linked movement and 30 large-project undo/redo steps');
   assert.deepEqual(blockedRequests,[],'the browser requested no remote resources');
   assert.deepEqual(pageErrors,[],'headless redraw flow completed without browser errors');
