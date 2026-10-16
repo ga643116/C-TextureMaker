@@ -228,30 +228,27 @@ function pixelDocument(engine,encodeColorMap){
   await page.waitForFunction(()=>document.querySelector('#inspector [data-action="image-source"][aria-pressed="true"]')?.dataset.mode==='all');
   console.log('PASS all/none/below source toolbar, undo/redo, save/load and simultaneous image contributions');
 
-  // Raw-image mode displays the source itself and obeys layer visibility.
+  // Color images display their original when no effect consumes them.
+  await setSource('none');
   await selectLayer(initial.redId);
   const mode=page.locator('#inspector [data-action="image-mode"][data-id="'+initial.redId+'"]');
-  await mode.selectOption('image');
-  await page.waitForFunction(id=>document.querySelector('#inspector [data-action="image-mode"][data-id="'+id+'"]')?.value==='image',initial.redId);
-  const rawDoc=await save();assert.equal(rawDoc.layers.find(layer=>layer.id===initial.redId).mode,'image');
-  const rawImage=rawDoc.layers.find(layer=>layer.id===initial.redId).image;
-  assert.equal(await sourceImageCount(rawImage),1,'raw image mode places the source image in the rendered SVG');
+  assert.deepEqual(await mode.locator('option').evaluateAll(nodes=>nodes.map(node=>node.value)),['mask','color']);
+  const colorDoc=await save(),colorImage=colorDoc.layers.find(layer=>layer.id===initial.redId).image;
+  assert.equal(await sourceImageCount(colorImage),1,'unprocessed color source is visible');
+  await page.locator('#layer-list [data-action="visibility"][data-id="'+initial.redId+'"]').click();
+  assert.equal(await sourceImageCount(colorImage),0,'hiding an image removes its original');
+  await page.locator('#layer-list [data-action="visibility"][data-id="'+initial.redId+'"]').click();
   await selectLayer(initial.pixelId);
-  const rawPixel=rawDoc.layers.find(layer=>layer.id===initial.pixelId);
-  const rawSources=engine.resolveColorSources(rawDoc,rawPixel);
-  assert.deepEqual(rawSources.map(source=>source.id),[initial.redId,initial.greenId],'all source mode resolves both color and raw-image layers for Pixel sampling');
-  const rawRaster=engine.getPixelData(rawDoc,rawPixel);
-  assert.deepEqual([...rawRaster.pixels.slice(0,4)],[255,0,0,255],'Pixel raster samples the raw-image layer at the red source position');
-  const greenOffset=3*4;
-  assert.deepEqual([...rawRaster.pixels.slice(greenOffset,greenOffset+4)],[0,255,0,255],'Pixel raster keeps the green color layer contribution alongside the raw image');  await assertNoHorizontalOverflow('image layer zh');
-  await page.screenshot({path:path.join(output,'image-layer-zh.png'),fullPage:true});
-  await page.locator('#layer-list [data-action="visibility"][data-id="'+initial.redId+'"]').click();
-  assert.equal(await sourceImageCount(rawImage),0,'hiding a raw image layer removes it from the rendered SVG');
-  await page.locator('#layer-list [data-action="visibility"][data-id="'+initial.redId+'"]').click();
+  await setSource('all');
+  const sharedColors=await save(),colorPixel=sharedColors.layers.find(layer=>layer.id===initial.pixelId);
+  assert.equal(await sourceImageCount(colorImage),0,'Pixel output replaces its original source');
+  const colorRaster=engine.getPixelData(sharedColors,colorPixel);
+  assert.deepEqual([...colorRaster.pixels.slice(0,4)],[255,0,0,255]);
+  assert.deepEqual([...colorRaster.pixels.slice(3*4,4*4)],[0,255,0,255]);
   await selectLayer(initial.redId);
-  await page.locator('#inspector [data-action="image-mode"][data-id="'+initial.redId+'"]').selectOption('color');
-  await page.waitForFunction(id=>document.querySelector('#inspector [data-action="image-mode"][data-id="'+id+'"]')?.value==='color',initial.redId);
-  console.log('PASS raw-image mode display and visibility toggle');
+  await assertNoHorizontalOverflow('image layer zh');
+  await page.screenshot({path:path.join(output,'image-layer-zh.png'),fullPage:true});
+  console.log('PASS two image modes, visible originals before processing, effect replacement and visibility toggle');
 
   // Add a second pattern through the existing library control and share one source.
   await selectLayer(initial.pixelId);
@@ -292,6 +289,27 @@ function pixelDocument(engine,encodeColorMap){
   assert.equal(await activeSourceMode(),'below','legacy automatic sources are represented by the below toolbar state');
   const legacyRoundTrip=await save();
   assert.equal(legacyRoundTrip.layers.find(layer=>layer.id===initial.pixelId).imageSource,'auto','loading and saving a legacy project preserves its original automatic source value');
+  const crowded=pixelDocument(engine,encodeColorMap);
+  for(let index=0;index<7;index++)crowded.layers.push({...JSON.parse(JSON.stringify(crowded.layers[2])),id:'crowded-'+index,name:'Synthetic image '+index,visible:false});
+  await load(crowded,'image-layer-layout.ctm');
+  await page.setViewportSize({width:1440,height:720});
+  for(const locale of ['zh','en','ja']){
+   await page.locator('.language-select').selectOption(locale);
+   await selectLayer(initial.redId);
+   for(const mode of ['color','mask']){
+    await page.locator('#layer-list [data-action="image-mode"]').selectOption(mode);
+    const geometry=await page.locator('#layer-list .layer').evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();const controls=node.querySelector('.mask-layer-controls')?.getBoundingClientRect();return {top:box.top,bottom:box.bottom,controlsBottom:controls?.bottom};}));
+    for(let index=0;index<geometry.length;index++){
+     const row=geometry[index];
+     if(row.controlsBottom!==undefined)assert.ok(row.controlsBottom<=row.bottom+1,'selected image controls stay inside their row');
+     if(index)assert.ok(row.top>=geometry[index-1].bottom-1,'layer rows never overlap');
+    }
+   }
+  }
+  await page.locator('.language-select').selectOption('zh');
+  await page.locator('#layer-list [data-action="image-mode"]').selectOption('color');
+  await page.screenshot({path:path.join(output,'image-layer-compact-zh.png'),fullPage:true});
+  console.log('PASS compact layer controls without overlap in three languages and both modes');
   assert.deepEqual(errors,[],'headless browser completed without page errors');
   console.log('PASS two pattern layers share an image source, keep independent opacity, and render in saved layer order');
   console.log('Screenshots:',path.join(output,'image-layer-zh.png'),'and',path.join(output,'pixel-advanced-zh.png'));

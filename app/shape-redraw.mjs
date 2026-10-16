@@ -66,6 +66,62 @@ function pointInRing(x, y, ring) {
   }
   return inside;
 }
+function pointInRingInterior(x, y, ring) {
+  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+    if (pointOnSegment(x, y, ring[j], ring[j + 1], ring[i], ring[i + 1])) return false;
+  }
+  return pointInRing(x, y, ring);
+}
+function boundsOverlapInterior(a, b) {
+  return Math.min(a.maxX, b.maxX) > Math.max(a.minX, b.minX) &&
+    Math.min(a.maxY, b.maxY) > Math.max(a.minY, b.minY);
+}
+function crossValue(ax, ay, bx, by, cx, cy) {
+  return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+}
+function oppositeSides(a, b) {
+  return (a > 1e-8 && b < -1e-8) || (a < -1e-8 && b > 1e-8);
+}
+function segmentsCrossInterior(ax, ay, bx, by, cx, cy, dx, dy) {
+  return oppositeSides(crossValue(ax, ay, bx, by, cx, cy), crossValue(ax, ay, bx, by, dx, dy)) &&
+    oppositeSides(crossValue(cx, cy, dx, dy, ax, ay), crossValue(cx, cy, dx, dy, bx, by));
+}
+function interiorProbeOverlaps(ring, other) {
+  const winding = Math.sign(ringArea(ring));
+  for (let i = 0; i < ring.length; i += 2) {
+    const j = (i + 2) % ring.length;
+    const dx = ring[j] - ring[i], dy = ring[j + 1] - ring[i + 1], length = Math.hypot(dx, dy);
+    if (!length) continue;
+    const mx = (ring[i] + ring[j]) / 2, my = (ring[i + 1] + ring[j + 1]) / 2;
+    for (const fraction of [1e-4, 1e-6, 1e-7, 1e-8, 1e-9]) {
+      const offset = length * fraction;
+      const x = mx - dy / length * winding * offset;
+      const y = my + dx / length * winding * offset;
+      if (pointInRingInterior(x, y, ring) && pointInRingInterior(x, y, other)) return true;
+    }
+  }
+  return false;
+}
+function ringsOverlapInterior(first, second, firstBounds = ringBounds(first), secondBounds = ringBounds(second)) {
+  if (!boundsOverlapInterior(firstBounds, secondBounds)) return false;
+  for (let i = 0; i < first.length; i += 2) {
+    if (pointInRingInterior(first[i], first[i + 1], second)) return true;
+  }
+  for (let i = 0; i < second.length; i += 2) {
+    if (pointInRingInterior(second[i], second[i + 1], first)) return true;
+  }
+  for (let i = 0; i < first.length; i += 2) {
+    const nextFirst = (i + 2) % first.length;
+    for (let j = 0; j < second.length; j += 2) {
+      const nextSecond = (j + 2) % second.length;
+      if (segmentsCrossInterior(
+        first[i], first[i + 1], first[nextFirst], first[nextFirst + 1],
+        second[j], second[j + 1], second[nextSecond], second[nextSecond + 1],
+      )) return true;
+    }
+  }
+  return interiorProbeOverlaps(first, second) || interiorProbeOverlaps(second, first);
+}
 function ringsContain(outer, inner) {
   const ob = ringBounds(outer), ib = ringBounds(inner);
   if (ib.minX < ob.minX || ib.minY < ob.minY || ib.maxX > ob.maxX || ib.maxY > ob.maxY) return false;
@@ -118,8 +174,13 @@ export function normalizeRedrawData(value) {
         work += rings[0].length * rings[ringIndex].length;
         if (work > 20000000 || !ringsContain(rings[0], rings[ringIndex])) throw new TypeError('Invalid redraw hole');
       }
+      const bounds = rings.map(ringBounds);
+      let overlapWork = 0;
       for (let a = 1; a < rings.length; a++) for (let b = a + 1; b < rings.length; b++) {
-        if (pointInRing(rings[a][0], rings[a][1], rings[b]) || pointInRing(rings[b][0], rings[b][1], rings[a])) throw new TypeError('Overlapping redraw holes');
+        if (!boundsOverlapInterior(bounds[a], bounds[b])) continue;
+        overlapWork += rings[a].length * rings[b].length;
+        if (overlapWork > 20000000) throw new TypeError('RedrawOutputTooComplex');
+        if (ringsOverlapInterior(rings[a], rings[b], bounds[a], bounds[b])) throw new TypeError('Overlapping redraw holes');
       }
     }
     regions.push({ id: source.id, color: canonicalHex(source.color), role: source.role, rings });

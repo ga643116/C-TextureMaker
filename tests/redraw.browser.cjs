@@ -22,6 +22,7 @@ function fixturePNG(){
  rect(94,70,174,132,blue);
  rect(30,101,71,130,gold);
  rect(41,47,60,74,[0,0,0,0]); // Transparent hole.
+ rect(60,74,72,88,[0,0,0,0]); // A second hole touches the first at one corner.
  for(let x=31;x<72;x++){const y=77+Math.floor((x-31)/3);pixel(x,y,ink);} // Thin line art.
  for(let y=24;y<39;y++)for(let x=20;x<22;x++)pixel(x,y,ink);
  return PNG.sync.write(png);
@@ -115,6 +116,8 @@ async function assertNoHorizontalOverflow(page,label){
   await page.locator('#pattern-list [data-pattern="redraw"]').click();
   await page.waitForFunction(()=>document.querySelector('#pattern-list [data-pattern="redraw"]')?.getAttribute('aria-pressed')==='true');
   const redrawLayerId=await page.locator('#layer-list .layer.selected [data-action="select-layer"]').getAttribute('data-id');
+  const thumbColors=await page.locator('#pattern-list [data-pattern="redraw"] .redraw-thumb [fill]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('fill')).filter(color=>/^#[0-9a-f]{6}$/i.test(color)));
+  assert.ok(thumbColors.length>0&&thumbColors.every(color=>color.slice(1,3)===color.slice(3,5)&&color.slice(3,5)===color.slice(5,7)),'redraw library thumbnail uses only grayscale fills');
   assert.ok(redrawLayerId,'redraw pattern is active on a real project layer');
   const sourceStatus=page.locator('#inspector .inspector-head > p.helper');await sourceStatus.waitFor({state:'attached'});
   const initialSourcePrompt=(await sourceStatus.innerText()).trim();
@@ -133,6 +136,8 @@ async function assertNoHorizontalOverflow(page,label){
   const sourceId=await page.locator('#layer-list .layer[data-layer-type="imageMask"].selected [data-action="select-layer"]').getAttribute('data-id');
   assert.ok(sourceId,'UI import creates a selectable source layer');
   assert.equal(await page.locator('#layer-list [data-layer-id="'+sourceId+'"] [data-action="image-mode"]').inputValue(),'color','redraw import uses a color source');
+  assert.deepEqual(await page.locator('#inspector [data-action="image-mode"] option').evaluateAll(nodes=>nodes.map(node=>node.value)),['mask','color'],'image modes have only mask and color choices');
+  assert.equal(await page.locator('#artboard svg image').count(),1,'the source remains visible before any redraw output exists');
   await selectLayer(redrawLayerId);
   const sourceSection=page.locator('#inspector details[data-section="image-source"]');
   await sourceSection.waitFor({state:'attached'});

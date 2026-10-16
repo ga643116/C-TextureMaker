@@ -138,7 +138,7 @@ body.file-dropping:after{content:attr(data-drop-hint);position:fixed;inset:12px;
 
 /* Hierarchical layer tree and image source controls. */
 .layer-list{max-height:min(34vh,340px);overflow-y:auto;overflow-x:hidden;gap:2px;scrollbar-gutter:stable}
-.layer{position:relative;padding-left:calc(3px + var(--layer-depth,0)*13px);transition:opacity .12s ease}
+.layer{position:relative;flex-shrink:0;padding-left:calc(3px + var(--layer-depth,0)*13px);transition:opacity .12s ease}
 .layer-row{min-height:30px}
 .layer-select{display:flex;align-items:center;gap:5px;min-height:26px;padding-inline:4px}
 .layer-select .layer-name{flex:1;text-align:left}

@@ -160,7 +160,7 @@ test('auto, none and explicit image selection preserve source scope per pattern'
   none.imageSource = 'none';
   const doc = documentWith([automatic, explicitRed, explicitBlue, explicitAgain, explicitImage, none, red, blue, raw]);
 
-  assert.deepEqual(resolveColorSources(doc, automatic).map(layer => layer.id), ['blue-source']);
+  assert.deepEqual(resolveColorSources(doc, automatic).map(layer => layer.id), ['raw-source']);
   assert.deepEqual(sample(doc, explicitRed), [255, 0, 0, 255]);
   assert.deepEqual(sample(doc, explicitBlue), [0, 0, 255, 255]);
   assert.deepEqual(sample(doc, explicitImage), [0, 255, 0, 255]);
@@ -207,6 +207,7 @@ test('missing and hidden selections stay transparent without falling back to pat
 
 test('raw image mode displays in layer order and stays outside global image masks', () => {
   const art = createLayer('dots', 'art');
+  art.imageSource = 'none';
   art.params.spacing = 128;
   art.params.size = 96;
   const whiteMask = imageLayer('white-mask', [255, 255, 255, 255], { mode: 'mask' });
@@ -218,6 +219,41 @@ test('raw image mode displays in layer order and stays outside global image mask
   assert.equal(svg.split(photo.image).length - 1, 1);
   const output = raster(svg),index = (64 * output.width + 64) * 4;
   assert.deepEqual([...output.data.subarray(index, index + 4)], [255, 0, 0, 255]);
+});
+
+test('color images remain visible before redraw generation and replace the base only after output exists', () => {
+  for (const mode of ['color', 'image']) {
+    const photo = imageLayer('photo', [255, 0, 0, 255], { mode });
+    const art = createLayer('redraw', 'art');
+    art.imageSource = 'below';
+    const doc = documentWith([photo, art]);
+    doc.transparent = true;
+    const at = (png, x, y) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 4)];
+    assert.deepEqual(at(raster(renderSVG(doc)), 0, 0), [255, 0, 0, 255], mode + ' is visible while generation is pending');
+    art.redrawData = {version:1,width:128,height:128,detail:55,regions:[{id:'r0',color:'#334455',role:1,rings:[[24,24,104,24,104,104,24,104]]}],lines:[]};
+    const generated = renderSVG(doc);
+    assert.doesNotMatch(generated, /<image(?:\s|>)/, 'generated vectors replace the source image');
+    assert.equal(at(raster(generated), 0, 0)[3], 0, 'removed areas remain transparent');
+    assert.deepEqual(at(raster(generated), 64, 64), [51, 68, 85, 255]);
+    art.redrawEdits = {r0:{hidden:true}};
+    assert.equal(at(raster(renderSVG(doc)), 64, 64)[3], 0, 'hiding all regions does not reveal the original');
+    art.visible = false;
+    assert.deepEqual(at(raster(renderSVG(doc)), 64, 64), [255, 0, 0, 255], 'hiding the effect restores its base image');
+  }
+});
+
+test('multiple unused color images display in layer order and remain sampling sources', () => {
+  const first = imageLayer('first', [255,0,0,255]);
+  const second = imageLayer('second', [0,0,255,255]);
+  const art = createLayer('redraw', 'art');
+  art.imageSource = 'all';
+  const doc = documentWith([first, second, art]);
+  assert.deepEqual(sample(doc, art), [0,0,255,255]);
+  let png = raster(renderSVG(doc)), offset = (64 * png.width + 64) * 4;
+  assert.deepEqual([...png.data.subarray(offset,offset+4)], [0,0,255,255]);
+  second.visible = false;
+  png = raster(renderSVG(doc));
+  assert.deepEqual([...png.data.subarray(offset,offset+4)], [255,0,0,255]);
 });
 
 test('image source defaults, legacy snapshots, reset, switching and presets preserve the right state', () => {

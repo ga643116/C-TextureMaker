@@ -729,7 +729,7 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
   const doc=normalizeDocument(document);assert(repeat===1||repeat===3,'repeat must be 1 or 3');
   const W=doc.width,H=doc.height,fullW=W*repeat,fullH=H*repeat,parts=[];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${fullW}" height="${fullH}" viewBox="0 0 ${fullW} ${fullH}"${preview?' data-preview="true"':''}>`);
-  const visible=doc.layers.filter(layer=>!isGroupLayer(layer)&&!isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.opacity>0),imageMasks=doc.layers.filter(layer=>isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.mode==='mask'),hasRawImages=doc.layers.some(layer=>isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.mode==='image');
+  const visible=doc.layers.filter(layer=>!isGroupLayer(layer)&&!isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.opacity>0),imageMasks=doc.layers.filter(layer=>isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.mode==='mask');
   parts.push('<defs><clipPath id="tile-base"><rect x="0" y="0" width="'+W+'" height="'+H+'"/></clipPath>');
   const imageRefs=new Map(),imageRefFor=layer=>{
     if(imageRefs.has(layer.id))return imageRefs.get(layer.id);
@@ -746,7 +746,6 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
     }
     colors.set(layer.id,{sampleColor,hasSource,sourceGroupId});
   }
-  for(const layer of doc.layers)if(isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&layer.mode==='image')imageRefFor(layer);
   const imageMaskIds=[];
   for(const layer of imageMasks){
     const geometry=imageMaskGeometry(layer,doc),filterId=`image-mask-filter-${esc(layer.id)}`,maskId=`image-mask-${esc(layer.id)}`,cutoff=Math.min(255,Math.floor(layer.threshold*256/255)),table=Array.from({length:256},(_,index)=>((layer.invert?index>cutoff:index<=cutoff)?'1':'0')).join(' ');
@@ -796,6 +795,12 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
     if(repeat===3)parts.push(`<g id="${source}" opacity="1" transform="${transform}">${layer.mask?`<g mask="url(#mask-${esc(layer.id)})">${content}</g>`:content}</g>`);
     else sources.set(layer.id,{content,transform});
   }
+  // Image colors show their original while no visible effect has produced output for them.
+  const processedImages=new Set();
+  for(const layer of visible)if(sources.has(layer.id))for(const image of resolveColorSources(doc,layer))processedImages.add(image.id);
+  const displayedImages=new Set(doc.layers.filter(layer=>isImageMaskLayer(layer)&&isLayerVisible(doc,layer)&&['color','image'].includes(layer.mode)&&!processedImages.has(layer.id)).map(layer=>layer.id));
+  for(const layer of doc.layers)if(displayedImages.has(layer.id))imageRefFor(layer);
+  const hasRawImages=displayedImages.size>0;
   parts.push('</defs>');
   if(!doc.transparent)parts.push(`<rect width="${fullW}" height="${fullH}" fill="${doc.background}"/>`);
   for(let tileY=0;tileY<repeat;tileY++)for(let tileX=0;tileX<repeat;tileX++){
@@ -806,7 +811,7 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
     for(const layer of doc.layers){
       if(isGroupLayer(layer))continue;
       if(isImageMaskLayer(layer)){
-        if(isLayerVisible(doc,layer)&&layer.mode==='image')parts.push(`<use href="#${imageRefs.get(layer.id)}"/>`);
+        if(displayedImages.has(layer.id))parts.push(`<use href="#${imageRefs.get(layer.id)}"/>`);
         continue;
       }
       if(!isLayerVisible(doc,layer)||layer.opacity<=0)continue;

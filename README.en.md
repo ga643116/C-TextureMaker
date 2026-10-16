@@ -62,7 +62,7 @@ Use the image button beside Layers to add a mask. It accepts PNG/JPG/WebP (up to
 
 To remove a connection, connect the same two cells again. Esc cancels the start point.
 
-Image layers can switch between Black / white mask, Image colors and Original image while preserving their threshold settings. Each pattern can use All layers, Image or No image. Image uses the nearest image or group below; several effects can share a base and stack in layer order. Low Poly samples a flat color per triangle; other patterns project the image through their shapes. Density, rotation and image transforms update the result live. Use Color from image under Appearance to add a color layer directly.
+Image layers switch between Black / white mask and Image colors while preserving threshold settings. Color images show the original until a pattern produces output, then display the processed result. Each pattern can use All layers, Image or No image. Image uses the nearest image or group below; several effects can share a base and stack in layer order. Low Poly samples a flat color per triangle; other patterns project the image through their shapes. Density, rotation and image transforms update the result live. Use Color from image under Appearance to add a color layer directly.
 
 Low Poly offers vertex density, shape variation, primary / secondary colors, gradient angle and color variation. Contour Depth shading adds inner / outer shadows with softness, distance, angle, color and opacity; turn it off to return to contour lines.
 

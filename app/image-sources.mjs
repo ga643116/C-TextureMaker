@@ -35,7 +35,7 @@ export function createImageSources({ isImageMaskLayer, imageMaskGeometry, create
     const visible = image => isLayerVisible(doc, image);
     if (selection === 'all') return images.filter(image => visible(image) && (image.mode === 'color' || image.mode === 'image'));
     if (selection === 'auto') {
-      const source = images.findLast(image => visible(image) && image.mode === 'color');
+      const source = images.findLast(image => visible(image) && (image.mode === 'color' || image.mode === 'image'));
       return source ? [source] : [];
     }
     const explicit = images.find(image => image.id === selection && visible(image) && (image.mode === 'color' || image.mode === 'image'));
@@ -51,7 +51,7 @@ export function createImageSources({ isImageMaskLayer, imageMaskGeometry, create
       return true;
     }
     if (selection === 'all' || selection === 'auto') {
-      return (doc?.layers ?? []).some(image => isImageMaskLayer(image) && (image.mode === 'color' || (selection === 'all' && image.mode === 'image')));
+      return (doc?.layers ?? []).some(image => isImageMaskLayer(image) && (image.mode === 'color' || image.mode === 'image'));
     }
     return true;
   }

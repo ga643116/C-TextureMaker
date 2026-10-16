@@ -133,6 +133,53 @@ test('palette modes, region override and hidden preview/export behavior are stab
   assert.doesNotMatch(output, /data-redraw-region/);
 });
 
+test('normalizer accepts corner-touching holes and preserves both cutouts', () => {
+  const outer = [0, 0, 100, 0, 100, 100, 0, 100];
+  const holes = [
+    [50, 50, 50, 20, 80, 20, 80, 50],
+    [20, 80, 20, 50, 50, 50, 50, 80],
+  ];
+  const data = normalizeRedrawData({
+    version: 1, width: 100, height: 100, detail: 55,
+    regions: [{ id: 'r0', color: '#c43a30', role: 1, rings: [outer, ...holes] }],
+    lines: [],
+  });
+  assert.equal(data.regions[0].rings.length, 3);
+  assert.deepEqual(data.regions[0].rings.slice(1), holes);
+});
+
+test('normalizer rejects intersecting and contained redraw holes', () => {
+  const outer = [0, 0, 100, 0, 100, 100, 0, 100];
+  const normalizeWithHoles = holes => normalizeRedrawData({
+    version: 1, width: 100, height: 100, detail: 55,
+    regions: [{ id: 'r0', color: '#c43a30', role: 1, rings: [outer, ...holes] }],
+    lines: [],
+  });
+  assert.throws(() => normalizeWithHoles([
+    [20, 20, 80, 20, 50, 80],
+    [20, 70, 80, 70, 50, 10],
+  ]), /Overlapping redraw holes/);
+  assert.throws(() => normalizeWithHoles([
+    [20, 20, 80, 20, 80, 80, 20, 80],
+    [30, 30, 40, 30, 40, 40, 30, 40],
+  ]), /Overlapping redraw holes/);
+});
+
+test('build output with diagonal transparent holes normalizes without filling either hole', () => {
+  const width = 64, height = 64, rgba = image(width, height);
+  rect(rgba, width, 4, 4, 60, 60, [210, 45, 45, 255]);
+  rect(rgba, width, 25, 20, 30, 25, [0, 0, 0, 0]);
+  rect(rgba, width, 20, 25, 25, 30, [0, 0, 0, 0]);
+
+  const built = buildRedraw(rgba, width, height, { detail: 55, seed: 1 });
+  const region = built.regions.find(item => item.rings.length >= 3);
+  assert.ok(region, 'both diagonal transparent cutouts remain encoded as holes');
+  assert.ok(region.rings[1].slice(0, 2).every((value, index) => value === region.rings[2][4 + index]), 'the traced holes share a corner at a first ring vertex');
+
+  const normalized = normalizeRedrawData(built);
+  assert.deepEqual(normalized.regions.map(item => item.rings), built.regions.map(item => item.rings));
+});
+
 test('normalizers reject malformed geometry, orphan edits and excessive coordinates', () => {
   const valid = regionData();
   assert.equal(normalizeRedrawData(undefined), null);
