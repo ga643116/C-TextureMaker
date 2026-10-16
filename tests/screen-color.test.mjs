@@ -27,3 +27,25 @@ test('browser eyedropper handles color, Escape and missing capability without sc
  await assert.rejects(createScreenColorPicker({EyeDropper:null}).pick(),/unavailable/);
  await assert.rejects(createScreenColorPicker({EyeDropper:class{async open(){return {sRGBHex:'invalid'};}}}).pick(),/Invalid/);
 });
+
+test('standard eyedropper is preferred even inside the desktop host and cancellation does not open fallback',async()=>{
+ const h=host();
+ assert.equal(await createScreenColorPicker({host:h,EyeDropper:class{async open(){return {sRGBHex:'#FEDCBA'};}}}).pick(),'#fedcba');
+ assert.equal(h.messages.length,0,'supported built-in picker never opens a native fallback window');
+ assert.equal(await createScreenColorPicker({host:h,EyeDropper:class{async open(){throw Object.assign(Error('cancel'),{name:'AbortError'});}}}).pick(),null);
+ assert.equal(h.messages.length,0,'Escape never launches a second picker');
+});
+test('unavailable or denied built-in eyedropper uses the desktop fallback exactly once',async()=>{
+ for(const name of ['NotAllowedError','NotSupportedError','SecurityError','OperationError']){
+  const h=host(),picker=createScreenColorPicker({host:h,EyeDropper:class{async open(){throw Object.assign(Error('unsupported'),{name});}}});
+  const result=picker.pick();await Promise.resolve();
+  assert.equal(h.messages.length,1);h.reply({data:{type:'pick-color-result',id:h.messages[0].id,ok:true,color:'#13579b'}});
+  assert.equal(await result,'#13579b');
+ }
+});
+test('browser selection rejects overlapping requests and releases busy state after cancellation',async()=>{
+ let finish;const picker=createScreenColorPicker({EyeDropper:class{open(){return new Promise(resolve=>finish=resolve);}}});
+ const pending=picker.pick();await assert.rejects(picker.pick(),/already active/);
+ finish({sRGBHex:'#123456'});assert.equal(await pending,'#123456');
+ const retry=picker.pick();finish({sRGBHex:'#654321'});assert.equal(await retry,'#654321');
+});

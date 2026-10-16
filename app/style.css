@@ -204,4 +204,6 @@ body.file-dropping:after{content:attr(data-drop-hint);position:fixed;inset:12px;
 @media(prefers-reduced-motion:reduce){.redraw-status[data-state=busy]:before{animation-duration:2.4s}}
 @media(max-width:560px){.redraw-palette{grid-template-columns:repeat(auto-fill,minmax(22px,1fr));gap:4px}.redraw-swatch{height:22px}}
 
-#artboard [data-redraw-region].redraw-hover:not(.redraw-selected){stroke:var(--muted)!important;stroke-opacity:.55;stroke-width:1.5px!important;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+#artboard [data-redraw-region].redraw-hover:not(.redraw-selected){stroke:#249dff!important;stroke-width:2px!important;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+
+.screen-picking,.screen-picking *{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M3 24l1-6L17 5l6 6L10 24zM14 7l7 7M17 5l3-3 6 6-3 3' fill='%23fff' stroke='%23111' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M5 23l2-4 10-10 2 2L9 21z' fill='%23249dff'/%3E%3C/svg%3E") 3 24,crosshair!important}

@@ -76,7 +76,7 @@ async function assertNoHorizontalOverflow(page,label){
   await context.addInitScript(()=>{
    localStorage.setItem('ctm.preferences',JSON.stringify({lang:'zh',theme:'dark',motion:false}));
    window.__screenPickCalls=0;window.__cancelScreenPick=false;
-   window.EyeDropper=class{async open(){window.__screenPickCalls++;if(window.__cancelScreenPick)throw new DOMException('Cancelled','AbortError');return {sRGBHex:'#123abc'};}};
+   window.EyeDropper=class{async open(){window.__screenPickCalls++;if(window.__holdScreenPick)return new Promise(resolve=>window.__resolveScreenPick=resolve);if(window.__cancelScreenPick)throw new DOMException('Cancelled','AbortError');return {sRGBHex:'#123abc'};}};
   });
   const origin='http://127.0.0.1:'+server.address().port+'/';
   const blockedRequests=[],pageErrors=[],workerURLs=[];
@@ -174,6 +174,11 @@ async function assertNoHorizontalOverflow(page,label){
   const secondId=regionIds[1],secondRegion=page.locator('#artboard [data-redraw-region="'+secondId+'"]');
   await firstRegion.dispatchEvent('pointermove');
   assert.equal(await firstRegion.evaluate(node=>node.classList.contains('redraw-hover')),true,'hover reveals the region boundary');
+  const hoverStyle=await firstRegion.evaluate(node=>({stroke:getComputedStyle(node).stroke,width:getComputedStyle(node).strokeWidth,opacity:getComputedStyle(node).strokeOpacity}));
+  assert.equal(hoverStyle.stroke,'rgb(36, 157, 255)','hover uses a visible blue boundary');assert.equal(hoverStyle.width,'2px');assert.equal(hoverStyle.opacity,'1');
+  await page.screenshot({path:path.join(output,'shape-redraw-hover-blue.png'),fullPage:true});
+  assert.equal(await page.locator('label[for="redraw-tool-color"]').innerText(),'填充顏色','fill color describes the tool purpose');
+
   await firstRegion.click({force:true});
   await secondRegion.click({force:true,modifiers:['Control']});
   assert.equal(await page.locator('#artboard .redraw-selected').count(),2,'Ctrl-click selects multiple regions');
@@ -206,7 +211,13 @@ async function assertNoHorizontalOverflow(page,label){
   const sv=page.locator('.ctm-color-picker .cp-sv'),svBox=await sv.boundingBox();
   await page.mouse.move(svBox.x+20,svBox.y+20);await page.mouse.down();await page.mouse.move(svBox.x+100,svBox.y+65,{steps:12});await page.mouse.up();
   assert.match(await page.locator('#redraw-tool-color').inputValue(),/^#[0-9a-f]{6}$/);
-  await page.locator('.cp-pick').click();await page.waitForFunction(()=>document.querySelector('#redraw-tool-color')?.value==='#123abc');
+  assert.equal(await page.locator('.ctm-color-picker .cp-head strong').innerText(),'填充顏色');
+  await page.evaluate(()=>window.__holdScreenPick=true);
+  await page.locator('.cp-pick').click();await page.waitForFunction(()=>document.documentElement.classList.contains('screen-picking'));
+  assert.match(await firstRegion.evaluate(node=>getComputedStyle(node).cursor),/data:image\/svg\+xml/,'an eyedropper cursor is active during selection');
+  await page.evaluate(()=>{window.__holdScreenPick=false;window.__resolveScreenPick({sRGBHex:'#123abc'});});
+  await page.waitForFunction(()=>document.querySelector('#redraw-tool-color')?.value==='#123abc'&&!document.documentElement.classList.contains('screen-picking'));
+
   assert.equal(await page.evaluate(()=>window.__screenPickCalls),1,'screen picker is invoked from the explicit button');
   await page.evaluate(()=>window.__cancelScreenPick=true);await page.locator('.cp-pick').click();
   await page.waitForFunction(()=>!document.querySelector('.cp-pick')?.disabled);

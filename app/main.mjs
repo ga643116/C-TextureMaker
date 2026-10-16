@@ -526,7 +526,7 @@ document.addEventListener('click',e=>{
  e.preventDefault();
  const layerId=selected;
  const send=(color,event)=>{if(input.isConnected&&selected===layerId){input.value=color;input.dispatchEvent(new Event(event,{bubbles:true}));}};
- colorPicker=openColorPicker({anchor:input,value:input.value,onInput:color=>send(color,'input'),onChange:color=>send(color,'change'),onPick:()=>screenColorPicker.pick(),labels:{title:t('color'),done:t('close'),hue:t('pickerHue'),area:t('pickerArea'),hex:t('pickerHex'),pick:t('pickerScreen'),picking:t('pickerPicking'),pickError:t('pickerFailed')}});
+ colorPicker=openColorPicker({anchor:input,value:input.value,onInput:color=>send(color,'input'),onChange:color=>send(color,'change'),onPick:async()=>{document.documentElement.classList.add('screen-picking');try{return await screenColorPicker.pick();}finally{document.documentElement.classList.remove('screen-picking');}},labels:{title:t(input.id==='redraw-tool-color'?'redrawToolColor':'color'),done:t('close'),hue:t('pickerHue'),area:t('pickerArea'),hex:t('pickerHex'),pick:t('pickerScreen'),picking:t('pickerPicking'),pickError:t('pickerFailed')}});
 });
 document.addEventListener('click',async e=>{if(!storageReady)return;const card=e.target.closest('[data-pattern]');if(card){const type=card.dataset.pattern;mutate(()=>{const l=activePattern();cancelRedrawJob(l.id);redrawSnapshotSignatures.delete(l.id);clearRedrawSelection();const fresh=switchLayerPattern(l,type);doc.layers[doc.layers.indexOf(l)]=fresh;setLayerSelection([fresh.id]);});return;}
  const row=e.target.closest('.layer[data-layer-id]');if(row&&!e.target.closest('button,input,select,textarea,[data-action],.mask-layer-controls')){selectLayer(row.dataset.layerId,{toggle:e.ctrlKey||e.metaKey,range:e.shiftKey});return;}

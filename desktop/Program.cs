@@ -76,6 +76,7 @@ namespace CTextureMaker
         private bool _closeRequestPending;
         private bool _allowNextUserClose;
         private bool _colorPickerBusy;
+        private ColorPickerSession _colorPickerSession;
         private volatile bool _startupFailed;
         private readonly WebView2 _webView;
         private readonly JavaScriptSerializer _serializer;
@@ -594,49 +595,37 @@ namespace CTextureMaker
         {
             if (_colorPickerBusy)
                 throw new InvalidOperationException("A screen color selection is already active.");
+
             _colorPickerBusy = true;
+            ColorPickerSession session = new ColorPickerSession(this, requestId);
+            _colorPickerSession = session;
             try
             {
-                Rectangle bounds = SystemInformation.VirtualScreen;
-                using (Bitmap screenshot = new Bitmap(bounds.Width, bounds.Height))
-                {
-                    using (Graphics graphics = Graphics.FromImage(screenshot))
-                        graphics.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size, CopyPixelOperation.SourceCopy);
-                    string selectedColor = null;
-                    using (Form picker = new Form())
-                    {
-                        picker.FormBorderStyle = FormBorderStyle.None;
-                        picker.StartPosition = FormStartPosition.Manual;
-                        picker.Bounds = bounds;
-                        picker.ShowInTaskbar = false;
-                        picker.TopMost = true;
-                        picker.KeyPreview = true;
-                        picker.Cursor = Cursors.Cross;
-                        picker.BackgroundImage = screenshot;
-                        picker.BackgroundImageLayout = ImageLayout.None;
-                        picker.MouseDown += delegate(object sender, MouseEventArgs args)
-                        {
-                            if (args.Button != MouseButtons.Left) return;
-                            if (args.X < 0 || args.Y < 0 || args.X >= screenshot.Width || args.Y >= screenshot.Height) return;
-                            Color color = screenshot.GetPixel(args.X, args.Y);
-                            selectedColor = "#" + color.R.ToString("x2") + color.G.ToString("x2") + color.B.ToString("x2");
-                            picker.DialogResult = DialogResult.OK;
-                            picker.Close();
-                        };
-                        picker.KeyDown += delegate(object sender, KeyEventArgs args)
-                        {
-                            if (args.KeyCode != Keys.Escape) return;
-                            args.Handled = true;
-                            picker.DialogResult = DialogResult.Cancel;
-                            picker.Close();
-                        };
-                        picker.ShowDialog(this);
-                        picker.BackgroundImage = null;
-                    }
-                    PostColorPickResult(requestId, true, selectedColor == null, selectedColor, null);
-                }
+                session.Start();
             }
-            finally { _colorPickerBusy = false; }
+            catch
+            {
+                if (Object.ReferenceEquals(_colorPickerSession, session))
+                {
+                    _colorPickerSession = null;
+                    _colorPickerBusy = false;
+                }
+                session.Dispose();
+                throw;
+            }
+        }
+
+        private void OnColorPickerCompleted(ColorPickerSession session, bool ok, bool cancelled, Color color, string error)
+        {
+            if (!Object.ReferenceEquals(_colorPickerSession, session))
+                return;
+
+            _colorPickerSession = null;
+            _colorPickerBusy = false;
+            string selectedColor = ok && !cancelled
+                ? "#" + color.R.ToString("x2") + color.G.ToString("x2") + color.B.ToString("x2")
+                : null;
+            PostColorPickResult(session.RequestId, ok, cancelled, selectedColor, error);
         }
 
         private void PostColorPickResult(string requestId, bool ok, bool cancelled, string color, string error)
@@ -1375,11 +1364,539 @@ namespace CTextureMaker
         {
             if (_smokeWatchdog != null)
                 _smokeWatchdog.Dispose();
+
+            ColorPickerSession colorPicker = _colorPickerSession;
+            _colorPickerSession = null;
+            _colorPickerBusy = false;
+            if (colorPicker != null)
+                colorPicker.Dispose();
+
             foreach (MemoryStream body in _blockedResponseBodies)
                 body.Dispose();
             _blockedResponseBodies.Clear();
             _webView.Dispose();
         }
+
+        private sealed class ColorPickerSession : IDisposable
+        {
+            private const int WhKeyboardLl = 13;
+            private const int WhMouseLl = 14;
+            private const int WmKeyDown = 0x0100;
+            private const int WmKeyUp = 0x0101;
+            private const int WmSysKeyDown = 0x0104;
+            private const int WmSysKeyUp = 0x0105;
+            private const int WmLButtonDown = 0x0201;
+            private const int WmLButtonUp = 0x0202;
+            private const uint VirtualKeyEscape = 0x1B;
+            private const int TimeoutMilliseconds = 175000;
+            private const uint InvalidPixel = 0xFFFFFFFF;
+
+            private readonly MainForm _owner;
+            private readonly HookProcedure _mouseHookCallback;
+            private readonly HookProcedure _keyboardHookCallback;
+            private IntPtr _mouseHook;
+            private IntPtr _keyboardHook;
+            private ColorPickerPreviewForm _preview;
+            private Timer _timer;
+            private bool _disposed;
+            private bool _completed;
+            private bool _finishQueued;
+            private bool _hasSelection;
+            private bool _selectionReleased;
+            private bool _selectionSampleQueued;
+            private bool _selectionSampleRead;
+            private Point _selectedPoint;
+            private Color _selectedColor;
+            private string _selectionError;
+            private int _startedAt;
+
+            internal ColorPickerSession(MainForm owner, string requestId)
+            {
+                _owner = owner;
+                RequestId = requestId;
+                _mouseHookCallback = MouseHookCallback;
+                _keyboardHookCallback = KeyboardHookCallback;
+            }
+
+            internal string RequestId { get; private set; }
+
+            internal void Start()
+            {
+                if (_disposed)
+                    throw new ObjectDisposedException("ColorPickerSession");
+
+                _preview = new ColorPickerPreviewForm();
+                _preview.FormClosed += OnPreviewFormClosed;
+                _timer = new Timer();
+                _timer.Interval = 33;
+                _timer.Tick += OnTimerTick;
+
+                Point cursor = Cursor.Position;
+                Color initialColor;
+                if (!TryReadPixel(cursor, out initialColor))
+                    throw new InvalidOperationException("Unable to read the screen pixel under the cursor.");
+                _preview.SetPreviewColor(initialColor);
+                PositionPreview(cursor);
+
+                IntPtr moduleHandle = GetModuleHandle(null);
+                if (moduleHandle == IntPtr.Zero)
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+
+                _keyboardHook = SetWindowsHookEx(WhKeyboardLl, _keyboardHookCallback, moduleHandle, 0);
+                if (_keyboardHook == IntPtr.Zero)
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+
+                _mouseHook = SetWindowsHookEx(WhMouseLl, _mouseHookCallback, moduleHandle, 0);
+                if (_mouseHook == IntPtr.Zero)
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+
+                _startedAt = Environment.TickCount;
+                _preview.Show();
+                _timer.Start();
+            }
+            public void Dispose()
+            {
+                if (_disposed)
+                    return;
+                _disposed = true;
+
+                if (_timer != null)
+                {
+                    _timer.Stop();
+                    _timer.Tick -= OnTimerTick;
+                    _timer.Dispose();
+                    _timer = null;
+                }
+
+                if (_mouseHook != IntPtr.Zero)
+                {
+                    UnhookWindowsHookEx(_mouseHook);
+                    _mouseHook = IntPtr.Zero;
+                }
+                if (_keyboardHook != IntPtr.Zero)
+                {
+                    UnhookWindowsHookEx(_keyboardHook);
+                    _keyboardHook = IntPtr.Zero;
+                }
+
+                if (_preview != null)
+                {
+                    _preview.FormClosed -= OnPreviewFormClosed;
+                    if (!_preview.IsDisposed)
+                    {
+                        if (_preview.Visible)
+                            _preview.Close();
+                        _preview.Dispose();
+                    }
+                    _preview = null;
+                }
+            }
+
+            private void OnTimerTick(object sender, EventArgs e)
+            {
+                if (_disposed || _completed)
+                    return;
+
+                if (_hasSelection && _selectionReleased && _selectionSampleRead)
+                {
+                    CompleteSelection();
+                    return;
+                }
+
+                if (unchecked(Environment.TickCount - _startedAt) >= TimeoutMilliseconds)
+                {
+                    Finish(true, true, Color.Empty, null);
+                    return;
+                }
+
+                try
+                {
+                    Point cursor = Cursor.Position;
+                    Color color;
+                    if (!TryReadPixelWithoutPreview(cursor, false, out color))
+                        throw new InvalidOperationException("Unable to read the screen pixel under the cursor.");
+
+                    _preview.SetPreviewColor(color);
+                    PositionPreview(cursor);
+                }
+                catch (Exception error)
+                {
+                    Finish(false, false, Color.Empty, LimitErrorMessage(error.Message));
+                }
+            }
+            private void OnPreviewFormClosed(object sender, FormClosedEventArgs e)
+            {
+                if (!_completed && !_disposed)
+                    Finish(true, true, Color.Empty, null);
+            }
+
+            private IntPtr MouseHookCallback(int code, IntPtr messagePointer, IntPtr dataPointer)
+            {
+                int message = code >= 0 ? messagePointer.ToInt32() : 0;
+                if (code >= 0 && (message == WmLButtonDown || message == WmLButtonUp))
+                {
+                    try
+                    {
+                        if (message == WmLButtonDown && !_hasSelection)
+                        {
+                            MouseHookData data = (MouseHookData)Marshal.PtrToStructure(dataPointer, typeof(MouseHookData));
+                            _selectedPoint = new Point(data.Point.X, data.Point.Y);
+                            _hasSelection = true;
+                            QueueSelectedPixelSample();
+                        }
+                        else if (message == WmLButtonUp && _hasSelection)
+                        {
+                            _selectionReleased = true;
+                            if (_selectionSampleRead)
+                                CompleteSelection();
+                        }
+                    }
+                    catch (Exception error)
+                    {
+                        RequestFinish(false, false, Color.Empty, LimitErrorMessage(error.Message));
+                    }
+
+                    return new IntPtr(1);
+                }
+
+                return CallNextHookEx(_mouseHook, code, messagePointer, dataPointer);
+            }
+            private IntPtr KeyboardHookCallback(int code, IntPtr messagePointer, IntPtr dataPointer)
+            {
+                if (code >= 0)
+                {
+                    int message = messagePointer.ToInt32();
+                    if (message == WmKeyDown || message == WmKeyUp || message == WmSysKeyDown || message == WmSysKeyUp)
+                    {
+                        KeyboardHookData data;
+                        try
+                        {
+                            data = (KeyboardHookData)Marshal.PtrToStructure(dataPointer, typeof(KeyboardHookData));
+                        }
+                        catch (Exception)
+                        {
+                            return CallNextHookEx(_keyboardHook, code, messagePointer, dataPointer);
+                        }
+
+                        if (data.VirtualKeyCode == VirtualKeyEscape)
+                        {
+                            if (message == WmKeyDown || message == WmSysKeyDown)
+                                RequestFinish(true, true, Color.Empty, null);
+                            return new IntPtr(1);
+                        }
+                    }
+                }
+
+                return CallNextHookEx(_keyboardHook, code, messagePointer, dataPointer);
+            }
+            private void QueueSelectedPixelSample()
+            {
+                if (_disposed || _completed || _selectionSampleQueued || _selectionSampleRead)
+                    return;
+
+                _selectionSampleQueued = true;
+                MethodInvoker sample = delegate
+                {
+                    _selectionSampleQueued = false;
+                    if (_disposed || _completed || !_hasSelection || _selectionSampleRead)
+                        return;
+
+                    try
+                    {
+                        if (!TryReadPixelWithoutPreview(_selectedPoint, true, out _selectedColor))
+                            throw new InvalidOperationException("Unable to read the screen pixel at the selected point.");
+                    }
+                    catch (Exception error)
+                    {
+                        _selectionError = LimitErrorMessage(error.Message);
+                    }
+
+                    _selectionSampleRead = true;
+                    if (_selectionReleased)
+                        CompleteSelection();
+                };
+
+                if (_preview != null && !_preview.IsDisposed && _preview.IsHandleCreated)
+                {
+                    try
+                    {
+                        _preview.BeginInvoke(sample);
+                        return;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+                }
+
+                _selectionSampleQueued = false;
+                _selectionError = "Unable to schedule the selected pixel read.";
+                _selectionSampleRead = true;
+            }
+
+            private void CompleteSelection()
+            {
+                if (_disposed || _completed || !_selectionReleased || !_selectionSampleRead)
+                    return;
+
+                if (String.IsNullOrEmpty(_selectionError))
+                    RequestFinish(true, false, _selectedColor, null);
+                else
+                    RequestFinish(false, false, Color.Empty, _selectionError);
+            }
+            private void RequestFinish(bool ok, bool cancelled, Color color, string error)
+            {
+                if (_disposed || _completed || _finishQueued)
+                    return;
+
+                _finishQueued = true;
+                MethodInvoker finish = delegate
+                {
+                    _finishQueued = false;
+                    Finish(ok, cancelled, color, error);
+                };
+
+                if (_preview != null && !_preview.IsDisposed && _preview.IsHandleCreated)
+                {
+                    try
+                    {
+                        _preview.BeginInvoke(finish);
+                        return;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+                }
+
+                if (!_owner.IsDisposed && _owner.IsHandleCreated)
+                {
+                    try
+                    {
+                        _owner.BeginInvoke(finish);
+                        return;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+                }
+
+                _finishQueued = false;
+            }
+            private void Finish(bool ok, bool cancelled, Color color, string error)
+            {
+                if (_disposed || _completed)
+                    return;
+
+                _completed = true;
+                Dispose();
+                _owner.OnColorPickerCompleted(this, ok, cancelled, color, error);
+            }
+
+            private void PositionPreview(Point cursor)
+            {
+                Screen screen = Screen.FromPoint(cursor);
+                Rectangle area = screen.WorkingArea;
+                int x = cursor.X + 18;
+                int y = cursor.Y + 20;
+                if (x + _preview.Width > area.Right)
+                    x = cursor.X - _preview.Width - 18;
+                if (y + _preview.Height > area.Bottom)
+                    y = cursor.Y - _preview.Height - 18;
+
+                int maxX = Math.Max(area.Left, area.Right - _preview.Width);
+                int maxY = Math.Max(area.Top, area.Bottom - _preview.Height);
+                x = Math.Max(area.Left, Math.Min(x, maxX));
+                y = Math.Max(area.Top, Math.Min(y, maxY));
+                _preview.Location = new Point(x, y);
+            }
+
+            private static bool TryReadPixel(Point point, out Color color)
+            {
+                color = Color.Empty;
+                IntPtr desktopDc = GetDC(IntPtr.Zero);
+                if (desktopDc == IntPtr.Zero)
+                    return false;
+
+                uint pixel;
+                try
+                {
+                    pixel = GetPixel(desktopDc, point.X, point.Y);
+                }
+                finally
+                {
+                    ReleaseDC(IntPtr.Zero, desktopDc);
+                }
+
+                if (pixel == 0xFFFFFFFF)
+                    return false;
+
+                int red = (int)(pixel & 0xFF);
+                int green = (int)((pixel >> 8) & 0xFF);
+                int blue = (int)((pixel >> 16) & 0xFF);
+                color = Color.FromArgb(red, green, blue);
+                return true;
+            }
+            private bool TryReadPixelWithoutPreview(Point point, bool forceHide, out Color color)
+            {
+                bool hidePreview = _preview != null && !_preview.IsDisposed && _preview.Visible && (forceHide || _preview.Bounds.Contains(point));
+                if (!hidePreview)
+                    return TryReadPixel(point, out color);
+
+                try
+                {
+                    _preview.Hide();
+                    int flushResult = DwmFlush();
+                    if (flushResult < 0)
+                        Marshal.ThrowExceptionForHR(flushResult);
+                    return TryReadPixel(point, out color);
+                }
+                finally
+                {
+                    if (!_disposed && !_completed && _preview != null && !_preview.IsDisposed)
+                    {
+                        PositionPreview(Cursor.Position);
+                        if (!_preview.Visible)
+                            _preview.Show();
+                    }
+                }
+            }
+            private delegate IntPtr HookProcedure(int code, IntPtr message, IntPtr data);
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct NativePoint
+            {
+                public int X;
+                public int Y;
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct MouseHookData
+            {
+                public NativePoint Point;
+                public uint MouseData;
+                public uint Flags;
+                public uint Time;
+                public IntPtr ExtraInfo;
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct KeyboardHookData
+            {
+                public uint VirtualKeyCode;
+                public uint ScanCode;
+                public uint Flags;
+                public uint Time;
+                public IntPtr ExtraInfo;
+            }
+
+            [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+            private static extern IntPtr GetModuleHandle(string moduleName);
+
+            [DllImport("dwmapi.dll")]
+            private static extern int DwmFlush();
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern IntPtr SetWindowsHookEx(int hookId, HookProcedure callback, IntPtr moduleHandle, uint threadId);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            private static extern bool UnhookWindowsHookEx(IntPtr hookHandle);
+
+            [DllImport("user32.dll")]
+            private static extern IntPtr CallNextHookEx(IntPtr hookHandle, int code, IntPtr message, IntPtr data);
+
+            [DllImport("user32.dll")]
+            private static extern IntPtr GetDC(IntPtr windowHandle);
+
+            [DllImport("gdi32.dll", SetLastError = true)]
+            private static extern uint GetPixel(IntPtr deviceContext, int x, int y);
+
+            [DllImport("user32.dll")]
+            private static extern int ReleaseDC(IntPtr windowHandle, IntPtr deviceContext);
+        }
+
+        private sealed class ColorPickerPreviewForm : Form
+        {
+            private const int WsExTransparent = 0x00000020;
+            private const int WsExToolWindow = 0x00000080;
+            private const int WsExNoActivate = 0x08000000;
+            private const int WmNcHitTest = 0x0084;
+            private const int HtTransparent = -1;
+            private Color _previewColor = Color.Black;
+            private string _hexColor = "#000000";
+
+            internal ColorPickerPreviewForm()
+            {
+                FormBorderStyle = FormBorderStyle.None;
+                StartPosition = FormStartPosition.Manual;
+                ShowInTaskbar = false;
+                TopMost = true;
+                BackColor = Color.FromArgb(30, 32, 36);
+                AutoScaleMode = AutoScaleMode.None;
+                ClientSize = new Size(140, 44);
+                DoubleBuffered = true;
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+                UpdateStyles();
+            }
+
+            protected override bool ShowWithoutActivation
+            {
+                get { return true; }
+            }
+
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    CreateParams parameters = base.CreateParams;
+                    parameters.ExStyle |= WsExNoActivate | WsExToolWindow | WsExTransparent;
+                    return parameters;
+                }
+            }
+
+            internal void SetPreviewColor(Color color)
+            {
+                if (_previewColor.Equals(color))
+                    return;
+                _previewColor = color;
+                _hexColor = "#" + color.R.ToString("x2") + color.G.ToString("x2") + color.B.ToString("x2");
+                Invalidate();
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+                Graphics graphics = e.Graphics;
+                graphics.Clear(Color.FromArgb(30, 32, 36));
+
+                using (SolidBrush swatch = new SolidBrush(_previewColor))
+                    graphics.FillRectangle(swatch, 7, 7, 30, 30);
+                using (Pen swatchBorder = new Pen(Color.FromArgb(210, 220, 228), 1f))
+                    graphics.DrawRectangle(swatchBorder, 6, 6, 31, 31);
+                using (Font font = new Font("Segoe UI", 10f, FontStyle.Bold, GraphicsUnit.Pixel))
+                using (SolidBrush text = new SolidBrush(Color.FromArgb(245, 247, 250)))
+                    graphics.DrawString(_hexColor, font, text, 45f, 15f);
+                using (Pen icon = new Pen(Color.FromArgb(230, 235, 240), 2f))
+                {
+                    graphics.DrawLine(icon, 118, 28, 130, 16);
+                    graphics.DrawLine(icon, 126, 13, 134, 21);
+                    graphics.DrawLine(icon, 129, 13, 134, 18);
+                    graphics.DrawLine(icon, 117, 29, 114, 32);
+                }
+                using (Pen border = new Pen(Color.FromArgb(95, 105, 116), 1f))
+                    graphics.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+            }
+
+            protected override void WndProc(ref Message message)
+            {
+                if (message.Msg == WmNcHitTest)
+                {
+                    message.Result = new IntPtr(HtTransparent);
+                    return;
+                }
+                base.WndProc(ref message);
+            }
+        }
+
     }
 
     internal static class AtomicProjectWriter

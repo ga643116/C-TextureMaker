@@ -154,7 +154,7 @@ Object.assign(TEXT, {
  redrawEditSelect:['選取','Select','選択'],
  redrawEditErase:['隱藏／顯示','Hide / show','非表示／表示'],
  redrawEditRecolor:['改色','Recolor','色を変更'],
- redrawToolColor:['工具顏色','Tool color','ツールの色'],
+ redrawToolColor:['填充顏色','Fill color','塗りつぶし色'],
  redrawRegionSelectHint:['點選區塊進行編輯；Ctrl＋點擊可複選，點擊空白處解除選取。隱藏工具可再次點擊恢復顯示。','Select a region; Ctrl-click to select more, or click blank space to deselect. Click again with Hide / show to restore a region.','領域をクリックして編集。Ctrl＋クリックで複数選択、空白をクリックで解除。非表示／表示ツールは再クリックで表示を戻します。'],
  redrawNoData:['匯入圖片並生成後，可在畫布上編輯色塊。','Import an image and generate regions to edit them on the canvas.','画像を読み込んで生成すると、キャンバス上で色面を編集できます。'],
  redrawOriginalColor:['原色','Original','元の色'],
