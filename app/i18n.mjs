@@ -165,7 +165,7 @@ Object.assign(TEXT, {
  redrawClearConfirmBody:['重新分割會清除目前所有手動隱藏與改色。你可以取消並保留這些編輯。','Regenerating clears all manual visibility and color edits. Cancel to keep them.','再分割すると手動の表示状態と色の編集がすべて消えます。キャンセルすると編集を保持します。'],
  redrawConfirmGenerate:['清除並重新分割','Clear and regenerate','消去して再分割'],
  redrawStale:['來源或分塊細節已變更；重新生成可更新快照。','The source or detail has changed. Regenerate to update the snapshot.','元画像または分割の細かさが変更されました。再生成するとスナップショットが更新されます。'],
- about:['版本 1.6.2 · 為設計師製作','Version 1.6.2 · Made for making','バージョン 1.6.2 · デザインのために']
+ about:['版本 1.6.3 · 為設計師製作','Version 1.6.3 · Made for making','バージョン 1.6.3 · デザインのために']
 });
 export function translator(lang='zh') {const i={zh:0,en:1,ja:2}[lang]??0; return (key)=>TEXT[key]?.[i]??key;}
 export function localized(value,lang) {return typeof value==='object'?(value[lang]??value.en??value.zh):value;}

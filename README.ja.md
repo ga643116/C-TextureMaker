@@ -4,11 +4,11 @@
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.6.2** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.2/C-TextureMaker-1.6.2-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.2) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
+**v1.6.3** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.3/C-TextureMaker-1.6.3-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.3) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
 
-[1.6.2 の主な変更点](docs/releases/v1.6.2.md#日本語)
+[1.6.3 の主な変更点](docs/releases/v1.6.3.md#日本語)
 
-**今回の更新**：「形状再描画」で色面・3色・輪郭線に変換。領域編集、画面の色取得、モード切り替えを改善し、元に戻す／やり直しを30段階まで保持します。
+**今回の更新**：Windowsアプリのアイコンを黄色地・黒線のロゴに統一し、タスクバーやエクスプローラーでも使用します。1.6.2の形状再描画と操作改善も引き継いでいます。
 
 https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ## ダウンロードと起動
 
-1. [C-TextureMaker-1.6.2-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.2/C-TextureMaker-1.6.2-win-x64.zip) をダウンロードし、全体を展開します。
+1. [C-TextureMaker-1.6.3-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.3/C-TextureMaker-1.6.3-win-x64.zip) をダウンロードし、全体を展開します。
 2. C-TextureMaker.exe を起動します。app フォルダーと DLL は隣に残してください。
 3. 書き込み可能な場所にフォルダー全体を置くと、隣接する data フォルダーに作業と設定を保存できます。
 
@@ -67,7 +67,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 最初の保存時に場所を選び、次回から同じファイルを更新します。右側の矢印またはCtrl+Shift+Sで別名保存できます。.ctmを開いた場合もそのファイルへ保存します。各レイヤーのパターン設定とセル編集は切り替え後も記憶され、プロジェクトにも保存されます。リセットは現在のパターンだけに適用されます。
 
-1.6.2は旧プロジェクトと既存の画像参照を保持します。Pixelやグループを含むプロジェクトは1.5.0以降で開いてください。
+1.6.3は旧プロジェクトと既存の画像参照を保持します。Pixelやグループを含むプロジェクトは1.5.0以降で開いてください。
 
 ## ソースからビルド
 

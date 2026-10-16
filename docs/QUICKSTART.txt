@@ -1,8 +1,8 @@
-C-TextureMaker 1.6.2 — Quick Start
+C-TextureMaker 1.6.3 — Quick Start
 公開版本 | Public release | 公開リリース
 
 已公開版本 / Published downloads / 公開済みバージョン:
-https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.2
+https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.3
 原始碼 / Public source / 公開ソース:
 https://github.com/ga643116/C-TextureMaker
 
