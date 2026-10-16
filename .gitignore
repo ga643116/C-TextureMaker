@@ -20,6 +20,10 @@
 **/cache-*/
 **/cache_*/
 
+# Local environment secrets
+.env
+.env.*
+
 # Local tooling and publishing state
 /.tools/
 **/.tools/
