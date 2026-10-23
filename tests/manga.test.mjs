@@ -47,6 +47,20 @@ function measureProfile({values,step}){
 function pixelAtSourceCenter(png,x,y,scale){return pixel(png,Math.round(scale*(x+.5)-.5),Math.round(scale*(y+.5)-.5));}
 function ink(png,x0=0,x1=png.width){let count=0;for(let y=2;y<png.height-2;y++)for(let x=x0;x<x1;x++){const i=(y*png.width+x)*4;if(png.data[i+3]>128&&png.data[i]<64)count++;}return count;}
 
+function lineWobble(png,pointAt,start,end,step,scale){
+ const offsets=[],coverages=[];
+ for(let i=0;i<=Math.round((end-start)/step);i++){
+  const t=start+i*step,[x,y,tx,ty]=pointAt(t),measured=measureProfile(strokeProfile(png,x,y,-ty,tx,scale,3));
+  offsets.push(measured.centroid);coverages.push(measured.coverage);
+ }
+ const high=[];
+ for(let i=2;i<offsets.length-2;i++){
+  const mean=(offsets[i-2]+offsets[i-1]+offsets[i]+offsets[i+1]+offsets[i+2])/5;
+  high.push(offsets[i]-mean);
+ }
+ return {offsets,coverages,rms:Math.sqrt(high.reduce((sum,value)=>sum+value*value,0)/high.length),peak:Math.max(...high.map(Math.abs)),maxOffset:Math.max(...offsets.map(Math.abs))};
+}
+
 test('manga separates light colors, midtones and shadows with no original color leakage',()=>{
  const {doc,effect}=setup(x=>x<60?[247,220,231,255]:x<120?[161,116,130,255]:[30,25,45,255]);
  const png=raster(renderSVG(doc));
@@ -278,4 +292,70 @@ test('density 2048 survives serialization and produces finite screened fill even
  assert.doesNotMatch(svg,/NaN|Infinity/);
  const center=pixel(raster(svg),64,64);
  assert.equal(center[3],255);assert.ok(center[0]<=136,'high-density screening retains gray fill instead of disappearing');
+});
+
+test('line smoothing reduces high-frequency center wobble on long strokes',()=>{
+ const scale=12,sigma=.75;
+ const {doc:straightDoc,effect:straightEffect}=setup((x,y)=>{
+  const px=x+.5,py=y+.5,distance=Math.abs(py-(64.5+.2*(px-64.5)))/Math.hypot(1,.2),value=Math.round(245-125*Math.exp(-distance*distance/(2*sigma*sigma)));
+  return [value,value,value,255];
+ },128,128);
+ Object.assign(straightEffect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65,lineWidth:1});
+ const straight=lineWobble(raster(renderSVG(straightDoc),scale),x=>[x,64.5+.2*(x-64.5),1,.2],20.5,107.5,.25,scale);
+ assert.ok(straight.coverages.every(value=>value>.7&&value<1.3),'the long straight stroke keeps one-pixel coverage');
+ assert.ok(straight.maxOffset<.2,`the straight stroke stays on its pixel-center path (${straight.maxOffset})`);
+ assert.ok(straight.rms<.005,`straight-line high-frequency center wobble is ${straight.rms} px RMS`);
+ assert.ok(straight.peak<.03,`straight-line high-frequency center wobble peaks at ${straight.peak} px`);
+
+ const {doc:curveDoc,effect:curveEffect}=setup((x,y)=>{
+  const px=x+.5,py=y+.5,phase=2*Math.PI*(px-16)/96,centerY=56.5+8*Math.sin(phase),slope=8*Math.cos(phase)*(2*Math.PI/96),distance=Math.abs(py-centerY)/Math.hypot(1,slope),value=Math.round(245-125*Math.exp(-distance*distance/(2*sigma*sigma)));
+  return [value,value,value,255];
+ },128,128);
+ Object.assign(curveEffect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65,lineWidth:1});
+ const curve=lineWobble(raster(renderSVG(curveDoc),scale),x=>{const phase=2*Math.PI*(x-16)/96;return [x,56.5+8*Math.sin(phase),1,8*Math.cos(phase)*(2*Math.PI/96)];},20.5,107.5,.25,scale);
+ assert.ok(curve.coverages.every(value=>value>.7&&value<1.3),'the long curve keeps one-pixel coverage');
+ assert.ok(curve.maxOffset<.45,`the curve stays near its known centerline (${curve.maxOffset})`);
+ assert.ok(curve.rms<.005,`long-curve high-frequency center wobble is ${curve.rms} px RMS`);
+ assert.ok(curve.peak<.03,`long-curve high-frequency center wobble peaks at ${curve.peak} px`);
+});
+
+test('line smoothing keeps a sharp right-angle corner anchored',()=>{
+ const scale=12,{doc,effect}=setup((x,y)=>{
+  const px=x+.5,py=y+.5,horizontal=px<=64.5?Math.abs(py-64.5):Infinity,vertical=py>=64.5?Math.abs(px-64.5):Infinity,distance=Math.min(horizontal,vertical),value=Math.round(245-125*Math.exp(-distance*distance/(2*.75*.75)));
+  return [value,value,value,255];
+ },128,128);
+ Object.assign(effect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65,lineWidth:1});
+ const png=raster(renderSVG(doc),scale);
+ assert.equal(pixelAtSourceCenter(png,64,64,scale)[0],0,'the corner remains present at its original pixel center');
+ for(const offset of [1,1.5,2,3]){
+  const horizontal=measureProfile(strokeProfile(png,64.5-offset,64.5,0,1,scale,1));
+  const vertical=measureProfile(strokeProfile(png,64.5,64.5+offset,1,0,scale,1));
+  assert.equal(horizontal.runs.length,1,`horizontal arm stays connected ${offset} px before the corner`);
+  assert.equal(vertical.runs.length,1,`vertical arm stays connected ${offset} px after the corner`);
+  assert.ok(Math.abs(horizontal.centroid)<.15,`horizontal center stays anchored near the corner (${horizontal.centroid})`);
+  assert.ok(Math.abs(vertical.centroid)<.15,`vertical center stays anchored near the corner (${vertical.centroid})`);
+ }
+ assert.deepEqual(pixelAtSourceCenter(png,65,63,scale),[255,255,255,255],'the empty outside quadrant has no rounded overshoot');
+});
+
+test('small closed line contours stay continuous without a seam bump',()=>{
+ const scale=12,cx=64.5,cy=64.5,rx=3.5,ry=2.5;
+ const {doc,effect}=setup((x,y)=>{
+  const ellipse=Math.hypot((x+.5-cx)/rx,(y+.5-cy)/ry);
+  return Math.abs(ellipse-1)*Math.min(rx,ry)<=.5?[30,30,30,255]:[235,235,235,255];
+ },128,128);
+ Object.assign(effect.params,{lineArt:true,lineStrength:65,lineWidth:1});
+ const png=raster(renderSVG(doc),scale),offsets=[];
+ for(let degrees=0;degrees<360;degrees++){
+  const angle=degrees*Math.PI/180,x=cx+rx*Math.cos(angle),y=cy+ry*Math.sin(angle),nx=Math.cos(angle)/rx,ny=Math.sin(angle)/ry;
+  const measured=measureProfile(strokeProfile(png,x,y,nx,ny,scale,1.8));
+  assert.equal(measured.runs.length,1,`the small closed contour stays connected at ${degrees} degrees`);
+  assert.ok(Math.abs(measured.centroid)<.4,`the small contour stays near its source centerline at ${degrees} degrees`);
+  assert.ok(measured.coverage>.55&&measured.coverage<1.45,'the small closed contour retains a thin stroke');
+  offsets.push(measured.centroid);
+ }
+ const high=offsets.map((value,i)=>value-(offsets[(i+358)%360]+offsets[(i+359)%360]+value+offsets[(i+1)%360]+offsets[(i+2)%360])/5);
+ const rms=Math.sqrt(high.reduce((sum,value)=>sum+value*value,0)/high.length),peak=Math.max(...high.map(Math.abs));
+ assert.ok(rms<.006,`small-loop seam wobble stays below ${rms} px RMS`);
+ assert.ok(peak<.025,`small-loop seam wobble stays below ${peak} px peak`);
 });

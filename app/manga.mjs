@@ -142,6 +142,94 @@ const thinningTables=[0,1].map(pass=>Uint8Array.from({length:256},(_,bits)=>{
   return count>=2&&count<=6&&transitions===1&&(pass?!p[0]||!p[2]||!p[6]:!p[0]||!p[2]||!p[4])&&(pass?!p[0]||!p[4]||!p[6]:!p[2]||!p[4]||!p[6])?1:0;
 }));
 
+// Fit continuous cubics within a subpixel error bound instead of following
+// every raster step with a short straight segment. Endpoints and junctions
+// remain fixed; sharp turns are fitted as separate curves.
+function smoothLinePath(points, closed) {
+  const last=points.length-1,unit=(x,y)=>{const length=Math.hypot(x,y)||1;return [x/length,y/length];};
+  const pair=p=>fmt(p[0])+','+fmt(p[1]);
+  if(last===0)return `M${pair(points[0])}h0`;
+  const corner=new Uint8Array(points.length),turns=new Float32Array(points.length);
+  if(last>20)for(let i=2;i<last-2;i++){
+    const a=points[i-2],p=points[i],b=points[i+2],u=unit(p[0]-a[0],p[1]-a[1]),v=unit(b[0]-p[0],b[1]-p[1]);
+    turns[i]=1-u[0]*v[0]-u[1]*v[1];
+  }
+  for(let i=2;i<last-2;i++)if(turns[i]>.7&&turns[i]>turns[i-1]&&turns[i]>=turns[i+1])corner[i]=1;
+  points=points.map((p,i)=>{
+    if(corner[i]||(!closed&&(i===0||i===last)))return p;
+    const a=points[closed?(i+last-1)%last:i-1],b=points[closed?(i+1)%last:i+1];
+    return [(a[0]+2*p[0]+b[0])/4,(a[1]+2*p[1]+b[1])/4];
+  });
+  if(closed)points[last]=points[0];
+  const cuts=[0];for(let i=1;i<last;i++)if(corner[i])cuts.push(i);cuts.push(last);
+  const distances=[0];
+  for(let i=1;i<=last;i++)distances.push(distances[i-1]+Math.hypot(points[i][0]-points[i-1][0],points[i][1]-points[i-1][1]));
+  const total=distances[last];
+  if(total<.00001)return `M${pair(points[0])}h0`;
+  function at(distance) {
+    if(closed)distance=((distance%total)+total)%total;
+    distance=Math.max(0,Math.min(total,distance));
+    let low=0,high=last;
+    while(high-low>1){const middle=(low+high)>>1;if(distances[middle]<=distance)low=middle;else high=middle;}
+    const t=(distance-distances[low])/(distances[high]-distances[low]||1);
+    return [points[low][0]*(1-t)+points[high][0]*t,points[low][1]*(1-t)+points[high][1]*t];
+  }
+  // Quadratic-preserving smoothing on equal arc-length samples removes raster
+  // wobble without the shrinking caused by repeated neighbor averaging.
+  const weights=[-21,14,39,54,59,54,39,14,-21];let section=1;
+  const smooth=points.map((p,i)=>{
+    while(section<cuts.length-1&&i>cuts[section])section++;
+    const from=distances[cuts[section-1]],to=distances[cuts[section]],distance=distances[i];
+    const periodic=closed&&cuts.length===2;
+    const radius=Math.min(4,(to-from)/10,periodic?Infinity:Math.min(distance-from,to-distance));
+    if(corner[i]||radius<.1)return p;
+    let x=0,y=0;
+    for(let k=0;k<9;k++){const q=at(distance+(k-4)*radius/4);x+=weights[k]*q[0]/231;y+=weights[k]*q[1]/231;}
+    const displacement=Math.hypot(x-p[0],y-p[1]),limit=Math.min(1,.6/(displacement||1));
+    return [p[0]+(x-p[0])*limit,p[1]+(y-p[1])*limit];
+  });
+  if(closed)smooth[last]=smooth[0];
+  const commands=[`M${pair(smooth[0])}`],tolerance=.2;
+  function fit(first,end,left,right) {
+    const pending=[[first,end,left,right]];
+    while(pending.length){
+      const [first,end,left,right]=pending.pop();
+      const a=smooth[first],b=smooth[end],parameters=[0];let length=0;
+      for(let i=first+1;i<=end;i++){length+=Math.hypot(smooth[i][0]-smooth[i-1][0],smooth[i][1]-smooth[i-1][1]);parameters.push(length);}
+      if(length<.00001)continue;
+      for(let i=1;i<parameters.length;i++)parameters[i]/=length;
+      let c11=0,c12=0,c22=0,d1=0,d2=0;
+      for(let i=first+1;i<end;i++){
+        const t=parameters[i-first],s=1-t,b1=3*s*s*t,b2=3*s*t*t,b0=s*s*s,b3=t*t*t;
+        const x=smooth[i][0]-a[0]*(b0+b1)-b[0]*(b2+b3),y=smooth[i][1]-a[1]*(b0+b1)-b[1]*(b2+b3);
+        c11+=b1*b1;c12+=b1*b2*(left[0]*right[0]+left[1]*right[1]);c22+=b2*b2;
+        d1+=b1*(left[0]*x+left[1]*y);d2+=b2*(right[0]*x+right[1]*y);
+      }
+      const determinant=c11*c22-c12*c12;
+      let l=determinant>1e-9?(d1*c22-d2*c12)/determinant:length/3,r=determinant>1e-9?(d2*c11-d1*c12)/determinant:length/3;
+      if(l<length*.0001||r<length*.0001||l>length||r>length)l=r=length/3;
+      const c=[a[0]+left[0]*l,a[1]+left[1]*l],d=[b[0]+right[0]*r,b[1]+right[1]*r];
+      let error=0,split=Math.floor((first+end)/2);
+      for(let i=first+1;i<end;i++){
+        const t=parameters[i-first],s=1-t,x=a[0]*s*s*s+3*c[0]*s*s*t+3*d[0]*s*t*t+b[0]*t*t*t,y=a[1]*s*s*s+3*c[1]*s*s*t+3*d[1]*s*t*t+b[1]*t*t*t;
+        const distance=(x-smooth[i][0])**2+(y-smooth[i][1])**2;
+        if(distance>error){error=distance;split=i;}
+      }
+      if(error<=tolerance*tolerance||end-first===1){commands.push(`C${pair(c)} ${pair(d)} ${pair(b)}`);continue;}
+      const before=smooth[Math.max(first,split-2)],after=smooth[Math.min(end,split+2)],tangent=unit(after[0]-before[0],after[1]-before[1]);
+      pending.push([split,end,tangent,right],[first,split,left,[-tangent[0],-tangent[1]]]);
+    }
+  }
+  const seam=closed?unit(smooth[1][0]-smooth[last-1][0],smooth[1][1]-smooth[last-1][1]):null;
+  for(let i=1;i<cuts.length;i++){
+    const first=cuts[i-1],end=cuts[i],a=smooth[first],b=smooth[end],next=smooth[Math.min(end,first+2)],previous=smooth[Math.max(first,end-2)];
+    const left=closed&&first===0?seam:unit(next[0]-a[0],next[1]-a[1]),right=closed&&end===last?[-seam[0],-seam[1]]:unit(previous[0]-b[0],previous[1]-b[1]);
+    fit(first,end,left,right);
+  }
+  return commands.join('')+(closed?'Z':'');
+}
+
+
 function traceLines(analysis,strength) {
   const {width,height,edges}=analysis,mask=lineMask(analysis,strength),stride=width+2;
   const pixels=new Uint8Array(stride*(height+2)),active=[],remove=[];
@@ -185,15 +273,7 @@ function traceLines(analysis,strength) {
       return [p[0]+.5+shift*nx,p[1]+.5+shift*ny];
     });
     if(loop)fitted[last]=fitted[0];
-    const smooth=fitted.map((p,j)=>{
-      if(degrees[chain[j]]!==2||(!loop&&(j===0||j===last)))return p;
-      const a=fitted[loop?(j+last-1)%last:j-1],b=fitted[loop?(j+1)%last:j+1];
-      return [(a[0]+2*p[0]+b[0])/4,(a[1]+2*p[1]+b[1])/4];
-    });
-    if(loop)smooth[last]=smooth[0];
-    const reduced=simplify(smooth,.08);
-    if(reduced.length===1){paths.push(`M${fmt(reduced[0][0])},${fmt(reduced[0][1])}h0`);return;}
-    paths.push(reduced.map((p,j)=>(j?'L':'M')+fmt(p[0])+','+fmt(p[1])).join('')+(loop?'Z':''));
+    paths.push(smoothLinePath(fitted,loop));
   }
   function follow(start,direction) {
     const chain=[start];let i=start,k=direction;
