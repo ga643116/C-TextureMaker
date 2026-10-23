@@ -37,19 +37,27 @@ test('manga separates light colors, midtones and shadows with no original color 
  assert.deepEqual(pixel(raster(renderSVG(doc)),90,60),[255,255,255,255]);
 });
 
-test('screentones stay in gray regions; size, density and every shape affect output',()=>{
+test('screentones retain gray fill between black dots; size, density and every shape affect output',()=>{
  const {doc,effect}=setup(x=>x<60?[235,235,235,255]:x<120?[128,128,128,255]:[20,20,20,255]);
  Object.assign(effect.params,{screentone:true,toneDensity:15,toneSize:50});
  const svg=renderSVG(doc),png=raster(svg);
  assert.equal(ink(png,4,54),0,'white is not screened');
  assert.equal(ink(png,126,176),50*(png.height-4),'shadows remain solid');
  const baseInk=ink(png,66,114);
- assert.ok(baseInk>100&&baseInk<48*(png.height-4)/2,'gray is white paper plus black dots');
+ assert.ok(baseInk>100&&baseInk<48*(png.height-4)/2,'gray carries black dots without becoming a solid black region');
  effect.params.toneSize=80;assert.ok(ink(raster(renderSVG(doc)),66,114)>baseInk*1.5);
  effect.params.toneSize=50;effect.params.toneDensity=25;
  assert.notDeepEqual(raster(renderSVG(doc)).data,png.data);
  const shapes=new Set();
- for(const shape of ['circle','square','diamond','line']){effect.params.toneShape=shape;shapes.add(PNG.sync.write(raster(renderSVG(doc))).toString('base64'));}
+ effect.params.toneDensity=15;
+ for(const shape of ['circle','square','diamond','line']){
+  effect.params.toneShape=shape;const screened=raster(renderSVG(doc));
+  assert.deepEqual(pixel(screened,72,60),[136,136,136,255],`${shape}: space between dots retains gray fill`);
+  assert.deepEqual(pixel(screened,78,66),[0,0,0,255],`${shape}: the screen remains black`);
+  assert.deepEqual(pixel(screened,24,60),[255,255,255,255],`${shape}: light areas stay white`);
+  assert.deepEqual(pixel(screened,150,60),[0,0,0,255],`${shape}: shadows stay black`);
+  shapes.add(PNG.sync.write(screened).toString('base64'));
+ }
  assert.equal(shapes.size,4);
  assert.ok(svg.length<12000,'screen uses a reusable SVG pattern, not thousands of nodes');
 });

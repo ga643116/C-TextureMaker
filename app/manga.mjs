@@ -155,7 +155,7 @@ export function createMangaEngine({ resolveColorSources, imageMaskGeometry, crea
     const transform=(geometry?geometry.transform+` translate(${fmt(-geometry.width/2)} ${fmt(-geometry.height/2)}) `:'')+`scale(${fmt(sx)} ${fmt(sy)})`;
     const spacing=Math.max(doc.width,doc.height)/p.toneDensity;
     const defs=`<mask id="${id}-alpha" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="${doc.width}" height="${doc.height}" mask-type="alpha"><use href="#${esc(sourceGroupId)}"/></mask>`+
-      (p.screentone?`<pattern id="${id}-screen" patternUnits="userSpaceOnUse" width="${fmt(spacing/sx)}" height="${fmt(spacing/sy)}" viewBox="0 0 1 1" preserveAspectRatio="none"><rect width="1" height="1" fill="#ffffff"/><g fill="#000000">${screenGlyph(p.toneShape,p.toneSize/100)}</g></pattern>`:'');
+      (p.screentone?`<pattern id="${id}-screen" patternUnits="userSpaceOnUse" width="${fmt(spacing/sx)}" height="${fmt(spacing/sy)}" viewBox="0 0 1 1" preserveAspectRatio="none"><rect width="1" height="1" fill="#888888"/><g fill="#000000">${screenGlyph(p.toneShape,p.toneSize/100)}</g></pattern>`:'');
     let line='';
     if (p.lineArt) {
       const path=cachedPath(lines,p.lineStrength+':'+Math.min(1,p.lineWidth),()=>trace(lineMask(analysis,p.lineStrength),width,height,1-Math.min(1,p.lineWidth)/2));
