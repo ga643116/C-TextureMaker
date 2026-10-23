@@ -214,11 +214,16 @@ function readSVGAttribute(svg,name){
   for(const key of ['lineStrength','lineWidth'])assert.equal(await page.locator(rangeField(key)).isDisabled(),true,'line control '+key+' is disabled when line art is off');
   await setToggle(page,lineToggle,true);
   await waitSVGChange(page,lineOff,'enabling line art');
+  for(const field of [rangeField('lineWidth'),numberField('lineWidth')])assert.equal(await page.locator(field).getAttribute('min'),'0.25','line width range and number controls allow a quarter pixel');
   let before=await currentSVG(page);
   await setInputValue(page,rangeField('lineStrength'),88);
   let after=await waitSVGChange(page,before,'line strength');
   before=after;await setInputValue(page,rangeField('lineWidth'),2.5);
   after=await waitSVGChange(page,before,'line width');
+  before=after;await setInputValue(page,rangeField('lineWidth'),0.25);
+  assert.equal(Number(await page.locator(rangeField('lineWidth')).inputValue()),0.25,'line width range accepts 0.25');
+  assert.equal(Number(await page.locator(numberField('lineWidth')).inputValue()),0.25,'line width number input follows 0.25');
+  after=await waitSVGChange(page,before,'minimum line width');
 
   const toneToggle=toggleField('screentone');
   assert.equal(await page.locator(toneToggle).isChecked(),true,'screentone is enabled by default');
@@ -267,6 +272,7 @@ function readSVGAttribute(svg,name){
   const savedSource=savedProject.layers.find(layer=>layer.id===sourceId&&layer.type==='imageMask');
   assert.ok(savedManga,'UI project download contains the Manga layer');
   assert.deepEqual({black:savedManga.params.blackLevel,white:savedManga.params.whiteLevel,lineArt:savedManga.params.lineArt,lineStrength:savedManga.params.lineStrength,lineWidth:savedManga.params.lineWidth,screentone:savedManga.params.screentone,toneSize:savedManga.params.toneSize,toneDensity:savedManga.params.toneDensity,toneShape:savedManga.params.toneShape},savedControls,'project download serializes the visible Manga controls');
+  assert.equal(savedManga.params.lineWidth,0.25,'project download does not clamp the minimum line width');
   assert.equal(savedSource?.mode,'color','project download preserves the color source mode');
   assert.equal(savedSource?.offsetX,48,'project download preserves source movement');
   assert.ok(savedSource.image.startsWith('data:image/png;base64,'),'project download embeds the generated illustration PNG');
@@ -312,6 +318,8 @@ function readSVGAttribute(svg,name){
 
   await loadProject(savedProject);
   await page.waitForFunction(expected=>document.querySelector('#pattern-list [data-pattern="manga"]')?.getAttribute('aria-pressed')==='true',{}, {timeout:10000});
+  assert.equal(Number(await page.locator(numberField('lineWidth')).inputValue()),0.25,'loading the saved project restores line width 0.25 without clamping');
+  assert.equal(Number(await page.locator(rangeField('lineWidth')).inputValue()),0.25,'reloaded line width range keeps 0.25');
   assert.equal(Number(await page.locator(numberField('toneDensity')).inputValue()),2048,'loading the saved project restores tone density 2048');
   assert.equal(Number(await page.locator(rangeField('toneDensity')).inputValue()),2048,'reloaded tone density range keeps 2048');
   const reloadedSVG=await exportAsset('svg');

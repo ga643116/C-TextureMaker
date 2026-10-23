@@ -18,8 +18,33 @@ function setup(paint,width=180,height=128){
  const doc=createDocument(),image=source('image',width,height,paint),effect=createLayer('manga','manga');
  doc.width=width;doc.height=height;effect.imageSource='below';effect.params.lineArt=false;effect.params.screentone=false;doc.layers=[image,effect];return {doc,image,effect};
 }
-const raster=svg=>PNG.sync.read(new Resvg(svg,{font:{loadSystemFonts:false}}).render().asPng());
+const raster=(svg,scale=1)=>PNG.sync.read(new Resvg(svg,{...(scale===1?{}:{fitTo:{mode:'zoom',value:scale}}),font:{loadSystemFonts:false}}).render().asPng());
 const pixel=(png,x,y)=>[...png.data.slice((y*png.width+x)*4,(y*png.width+x)*4+4)];
+function strokeProfile(png,cx,cy,nx,ny,scale,radius=3){
+ const length=Math.hypot(nx,ny),step=1/(scale*2),count=Math.ceil(radius/step),values=[];
+ for(let i=-count;i<=count;i++){
+  const distance=i*step,x=cx+nx/length*distance,y=cy+ny/length*distance;
+  const gx=x*scale-.5,gy=y*scale-.5,x0=Math.max(0,Math.min(png.width-1,Math.floor(gx))),y0=Math.max(0,Math.min(png.height-1,Math.floor(gy))),x1=Math.min(png.width-1,x0+1),y1=Math.min(png.height-1,y0+1),fx=Math.max(0,Math.min(1,gx-x0)),fy=Math.max(0,Math.min(1,gy-y0));
+  const red=(xx,yy)=>png.data[(yy*png.width+xx)*4],top=red(x0,y0)*(1-fx)+red(x1,y0)*fx,bottom=red(x0,y1)*(1-fx)+red(x1,y1)*fx;
+  values.push({distance,red:top*(1-fy)+bottom*fy});
+ }
+ return {values,step};
+}
+function measureProfile({values,step}){
+ let coverage=0,moment=0;
+ for(let i=0;i<values.length-1;i++){
+  const a=1-values[i].red/255,b=1-values[i+1].red/255;
+  coverage+=(a+b)*step/2;moment+=(values[i].distance*a+values[i+1].distance*b)*step/2;
+ }
+ const runs=[];let start=-1;
+ for(let i=0;i<=values.length;i++){
+  const dark=i<values.length&&values[i].red<128;
+  if(dark&&start<0)start=i;
+  if(!dark&&start>=0){runs.push({center:(values[start].distance+values[i-1].distance)/2,width:(i-start)*step});start=-1;}
+ }
+ return {coverage,centroid:coverage?moment/coverage:Infinity,runs};
+}
+function pixelAtSourceCenter(png,x,y,scale){return pixel(png,Math.round(scale*(x+.5)-.5),Math.round(scale*(y+.5)-.5));}
 function ink(png,x0=0,x1=png.width){let count=0;for(let y=2;y<png.height-2;y++)for(let x=x0;x<x1;x++){const i=(y*png.width+x)*4;if(png.data[i+3]>128&&png.data[i]<64)count++;}return count;}
 
 test('manga separates light colors, midtones and shadows with no original color leakage',()=>{
@@ -141,43 +166,102 @@ test('uniform source colors fill image corners even at a one-pixel source resolu
 });
 
 
-test('line art follows dark strokes as continuous single lines at different angles',()=>{
+test('line art follows dark strokes with continuous one-pixel geometry at different angles',()=>{
+ const scale=5;
  for(const slope of [0,.2,.65,1]){
   const {doc,effect}=setup((x,y)=>{
-   const distance=Math.abs(y-(slope*(x-64)+64))/Math.hypot(1,slope);
+   const px=x+.5,py=y+.5,distance=Math.abs(py-(slope*(px-64.5)+64.5))/Math.hypot(1,slope);
    const value=Math.round(245-125*Math.exp(-distance*distance/(2*.75*.75)));
    return [value,value,value,255];
   },128,128);
-  Object.assign(effect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65});
-  const png=raster(renderSVG(doc)),widths=[];
+  Object.assign(effect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65,lineWidth:1});
+  const png=raster(renderSVG(doc),scale),widths=[];
   for(let x=20;x<108;x++){
-   const center=Math.round(slope*(x-64)+64);
-   assert.ok(pixel(png,x,center)[0]<128,`slope ${slope}: stroke center remains ink at ${x}`);
-   let runs=0,inside=false,count=0;
-   for(let y=center-5;y<=center+5;y++){
-    const dark=pixel(png,x,y)[0]<128;if(dark){count++;if(!inside)runs++;}inside=dark;
-   }
-   assert.equal(runs,1,`slope ${slope}: no hollow or doubled stroke at ${x}`);widths.push(count);
-   assert.equal(pixel(png,x,center+5)[0],255,'neighboring white paper stays clear');
+   const centerX=x+.5,centerY=slope*(centerX-64.5)+64.5;
+   const measured=measureProfile(strokeProfile(png,centerX,centerY,-slope,1,scale,4));
+   assert.equal(measured.runs.length,1,`slope ${slope}: exactly one connected ink band at x=${x}`);
+   assert.ok(Math.abs(measured.centroid)<.25,`slope ${slope}: ink center follows pixel-center geometry at x=${x}`);
+   assert.ok(measured.coverage>.7&&measured.coverage<1.3,`slope ${slope}: rasterized stroke remains one source pixel wide at x=${x} (${measured.coverage})`);
+   widths.push(measured.coverage);
   }
-  assert.ok(Math.max(...widths)-Math.min(...widths)<=2,'line width remains stable along a stroke');
+  assert.ok(Math.max(...widths)-Math.min(...widths)<.3,`slope ${slope}: stroke thickness stays stable along its length`);
  }
 });
 
-test('curved line art remains connected while weak flat-area noise is suppressed',()=>{
- const {doc,effect}=setup((x,y)=>{
-  const distance=Math.abs(Math.hypot(x-64,y-64)-36);
+test('curved line art stays connected at its pixel-center radius while weak noise is suppressed',()=>{
+ const scale=5,{doc,effect}=setup((x,y)=>{
+  const distance=Math.abs(Math.hypot(x+.5-64.5,y+.5-64.5)-36);
   const value=Math.round(245-125*Math.exp(-distance*distance/(2*.75*.75)));
   return [value,value,value,255];
  },128,128);
- Object.assign(effect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65});
- const png=raster(renderSVG(doc));
+ Object.assign(effect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65,lineWidth:1});
+ const png=raster(renderSVG(doc),scale),widths=[];
  for(let degrees=0;degrees<360;degrees+=5){
-  const angle=degrees*Math.PI/180;
-  assert.ok(pixel(png,Math.round(64+36*Math.cos(angle)),Math.round(64+36*Math.sin(angle)))[0]<128,`curve stays connected at ${degrees} degrees`);
+  const angle=degrees*Math.PI/180,nx=Math.cos(angle),ny=Math.sin(angle),x=64.5+36*nx,y=64.5+36*ny;
+  const measured=measureProfile(strokeProfile(png,x,y,nx,ny,scale,2.5));
+  assert.equal(measured.runs.length,1,`curve has one connected stroke at ${degrees} degrees`);
+  assert.ok(Math.abs(measured.centroid)<.3,`curve stays on the radius-36 pixel-center path at ${degrees} degrees`);
+  assert.ok(measured.coverage>.65&&measured.coverage<1.35,`curve thickness stays near one pixel at ${degrees} degrees (${measured.coverage})`);
+  widths.push(measured.coverage);
  }
+ assert.ok(Math.max(...widths)-Math.min(...widths)<.4,'curved stroke thickness stays stable around the loop');
  doc.layers[0]=source('image',128,128,(x,y)=>{const value=230+(x*17+y*31)%5;return [value,value,value,255];});
  assert.equal(ink(raster(renderSVG(doc))),0,'low-amplitude noise does not become scattered ink');
+});
+
+test('thin separated lines and small eye contours survive while broad gray and black fills stay complete',()=>{
+ const scale=5,eyes=[[60.5,42.5],[72.5,42.5]],rx=3.5,ry=2.5;
+ const {doc,effect}=setup((x,y)=>{
+  if(x>=90&&x<122&&y>=12&&y<84)return [128,128,128,255];
+  if(x>=126&&x<158&&y>=12&&y<84)return [24,24,24,255];
+  if(x>=10&&x<43&&(y===20||y===24))return [28,28,28,255];
+  const px=x+.5,py=y+.5;
+  for(const [cx,cy] of eyes){
+   const ellipse=Math.hypot((px-cx)/rx,(py-cy)/ry);
+   if(Math.abs(ellipse-1)*Math.min(rx,ry)<=.5)return [30,30,30,255];
+  }
+  return [235,235,235,255];
+ },160,128);
+ assert.equal(effect.params.blackLevel,65,'the separation check uses the default black threshold');
+ Object.assign(effect.params,{lineArt:true,lineStrength:65,lineWidth:1});
+ const png=raster(renderSVG(doc),scale);
+ const pair=measureProfile(strokeProfile(png,28.5,22.5,0,1,scale,5));
+ assert.equal(pair.runs.length,2,'two dark lines four pixels apart remain separate');
+ assert.ok(Math.abs(pair.runs[0].center+2)<.25&&Math.abs(pair.runs[1].center-2)<.25,'separated line centers stay at y=20.5 and y=24.5');
+ assert.ok(pair.runs.every(run=>run.width>.65&&run.width<1.4),'each separated line remains a single thin stroke');
+ effect.params.lineWidth=.25;
+ const quarter=raster(renderSVG(doc),scale);
+ for(const y of [20.5,24.5]){
+  const coverage=measureProfile(strokeProfile(quarter,28.5,y,0,1,scale,1.5)).coverage;
+  assert.ok(Math.abs(coverage-.25)<.12,'dark source strokes also thin to 0.25 instead of retaining a thick tonal fill');
+ }
+ for(const [cx,cy] of eyes){
+  for(let degrees=0;degrees<360;degrees+=15){
+   const angle=degrees*Math.PI/180,px=cx+rx*Math.cos(angle),py=cy+ry*Math.sin(angle),nx=Math.cos(angle)/rx,ny=Math.sin(angle)/ry;
+   const contour=measureProfile(strokeProfile(png,px,py,nx,ny,scale,2));
+   assert.equal(contour.runs.length,1,`eye outline is continuous at ${degrees} degrees around (${cx}, ${cy})`);
+   assert.ok(Math.abs(contour.centroid)<.45,`eye outline stays on its small closed contour at ${degrees} degrees around (${cx}, ${cy})`);
+   assert.ok(contour.coverage>.55&&contour.coverage<1.45,'eye outline retains a thin measured raster width');
+  }
+ }
+ for(let y=38;y<58;y++)for(let x=96;x<116;x++)assert.deepEqual(pixelAtSourceCenter(png,x,y,scale),[136,136,136,255],'broad gray fill remains intact');
+ for(let y=38;y<58;y++)for(let x=132;x<152;x++)assert.deepEqual(pixelAtSourceCenter(png,x,y,scale),[0,0,0,255],'broad black fill remains intact');
+});
+
+test('line-width settings change measured high-resolution raster coverage at 0.25, 1 and 3 pixels',()=>{
+ const scale=5,measured=[];
+ for(const lineWidth of [.25,1,3]){
+  const {doc,effect}=setup((x,y)=>{
+   const distance=Math.abs(y+.5-64.5),value=Math.round(245-125*Math.exp(-distance*distance/(2*.75*.75)));
+   return [value,value,value,255];
+  },128,128);
+  Object.assign(effect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65,lineWidth});
+  const png=raster(renderSVG(doc),scale),coverage=measureProfile(strokeProfile(png,64.5,64.5,0,1,scale,4)).coverage;
+  assert.ok(Math.abs(coverage-lineWidth)<.12,`line width ${lineWidth} has measured coverage ${coverage}`);
+  measured.push(coverage);
+ }
+ assert.ok(measured[1]-measured[0]>.5,'0.25 and 1 pixel widths have measurably different raster coverage');
+ assert.ok(measured[2]-measured[1]>1.3,'1 and 3 pixel widths have measurably different raster coverage');
 });
 
 test('density 2048 survives serialization and produces finite screened fill even for a tiny source',()=>{
