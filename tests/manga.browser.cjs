@@ -231,7 +231,10 @@ function readSVGAttribute(svg,name){
   before=toneOff;after=await waitSVGChange(page,before,'enabling screentone');
   before=after;await setInputValue(page,rangeField('toneSize'),75);
   after=await waitSVGChange(page,before,'tone size');
-  before=after;await setInputValue(page,rangeField('toneDensity'),72);
+  assert.equal(await page.locator(rangeField('toneDensity')).getAttribute('max'),'2048','tone density range supports 2048');
+  assert.equal(await page.locator(numberField('toneDensity')).getAttribute('max'),'2048','tone density number supports 2048');
+  before=after;await setInputValue(page,rangeField('toneDensity'),2048);
+  assert.equal(Number(await page.locator(numberField('toneDensity')).inputValue()),2048,'tone density range updates its number input at 2048');
   after=await waitSVGChange(page,before,'tone density');
   before=after;await setSelect(page,shapeField,'square');
   after=await waitSVGChange(page,before,'tone shape');
@@ -309,6 +312,8 @@ function readSVGAttribute(svg,name){
 
   await loadProject(savedProject);
   await page.waitForFunction(expected=>document.querySelector('#pattern-list [data-pattern="manga"]')?.getAttribute('aria-pressed')==='true',{}, {timeout:10000});
+  assert.equal(Number(await page.locator(numberField('toneDensity')).inputValue()),2048,'loading the saved project restores tone density 2048');
+  assert.equal(Number(await page.locator(rangeField('toneDensity')).inputValue()),2048,'reloaded tone density range keeps 2048');
   const reloadedSVG=await exportAsset('svg');
   assert.deepEqual(reloadedSVG.bytes,svgDownload.bytes,'loading the saved project reproduces the same SVG output');
   await fs.writeFile(path.join(output,'manga-roundtrip.svg'),reloadedSVG.bytes);

@@ -7,7 +7,7 @@ import { contours } from 'd3-contour';
 
 // Keep analysis independent of canvas/export size. Tone and line paths are
 // cached separately, so changing the screen never repeats image analysis.
-const MAX_EDGE = 768;
+const MAX_EDGE = 1024;
 const fmt = value => String(Number(value.toFixed(3)));
 const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 
@@ -28,18 +28,42 @@ function simplify(points, tolerance = .22) {
   return points.filter((_, i) => keep[i]);
 }
 
-function trace(values, width, height, threshold) {
+function trace(values, width, height, threshold, tolerance = .22) {
   // Extend edge samples before tracing. The source alpha mask clips them back
   // to the image, keeping uniform dark corners (including tiny images) filled.
   const paddedWidth=width+2,paddedHeight=height+2,padded=new Float32Array(paddedWidth*paddedHeight);
   for(let y=0;y<paddedHeight;y++)for(let x=0;x<paddedWidth;x++)padded[y*paddedWidth+x]=values[Math.max(0,Math.min(height-1,y-1))*width+Math.max(0,Math.min(width-1,x-1))];
   const geometry = contours().size([paddedWidth, paddedHeight]).smooth(true).contour(padded, threshold), paths = [];
   for (const polygon of geometry.coordinates) for (const ring of polygon) {
-    const points = simplify(ring);
+    const points = simplify(ring, tolerance);
     if (points.length < 4) continue;
     paths.push(points.slice(0, -1).map((p, i) => (i ? 'L' : 'M') + fmt(Math.max(0,Math.min(width,p[0]-1))) + ',' + fmt(Math.max(0,Math.min(height,p[1]-1)))).join('') + 'Z');
   }
   return paths.join('');
+}
+
+// A separable Gaussian keeps the line detector local and dependency-free.
+function blurRGB(values, width, height, sigma) {
+  const radius=Math.ceil(sigma*3),kernel=new Float32Array(radius*2+1);
+  let sum=0;
+  for(let x=-radius;x<=radius;x++){const weight=Math.exp(-x*x/(2*sigma*sigma));kernel[x+radius]=weight;sum+=weight;}
+  for(let i=0;i<kernel.length;i++)kernel[i]/=sum;
+  const horizontal=new Float32Array(values.length),result=new Float32Array(values.length);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    const i=(y*width+x)*3;
+    for(let k=-radius;k<=radius;k++){
+      const j=(y*width+Math.max(0,Math.min(width-1,x+k)))*3,w=kernel[k+radius];
+      for(let c=0;c<3;c++)horizontal[i+c]+=values[j+c]*w;
+    }
+  }
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    const i=(y*width+x)*3;
+    for(let k=-radius;k<=radius;k++){
+      const j=(Math.max(0,Math.min(height-1,y+k))*width+x)*3,w=kernel[k+radius];
+      for(let c=0;c<3;c++)result[i+c]+=horizontal[j+c]*w;
+    }
+  }
+  return result;
 }
 
 function analyze(sample, width, height, scaleX, scaleY) {
@@ -51,8 +75,8 @@ function analyze(sample, width, height, scaleX, scaleY) {
     luminance[i] = .2126*rgb[i*3] + .7152*rgb[i*3+1] + .0722*rgb[i*3+2];
   }
   // An edge-preserving blur removes small color noise from tonal regions.
-  // A separate gentle RGB blur is used for color-aware contour detection.
-  const darkness = new Float32Array(count), smooth = new Float32Array(count * 3), range = new Float32Array(256);
+  // Line extraction uses a continuous difference-of-Gaussians response below.
+  const darkness = new Float32Array(count), range = new Float32Array(256);
   for (let i = 0; i < 256; i++) range[i] = Math.exp(-i*i/(2*24*24));
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const i = y*width+x;
@@ -62,36 +86,22 @@ function analyze(sample, width, height, scaleX, scaleY) {
       const spatial = (dx===0?2:1)*(dy===0?2:1);
       const w = spatial*range[Math.min(255,Math.round(Math.abs(luminance[i]-luminance[j])))];
       tone += luminance[j]*w; weight += w;
-      for (let c = 0; c < 3; c++) smooth[i*3+c] += rgb[j*3+c]*spatial/16;
     }
     darkness[i] = alpha[i] ? 255-tone/weight : -1;
   }
-  const magnitude = new Float32Array(count), direction = new Uint8Array(count);
-  for (let y = 1; y < height-1; y++) for (let x = 1; x < width-1; x++) {
-    const i = y*width+x;
-    let best = 0, gx = 0, gy = 0;
-    for (let c = 0; c < 4; c++) {
-      const at = offset => c===3 ? .2126*smooth[offset*3]+.7152*smooth[offset*3+1]+.0722*smooth[offset*3+2] : smooth[offset*3+c];
-      const sx = -at(i-width-1)+at(i-width+1)-2*at(i-1)+2*at(i+1)-at(i+width-1)+at(i+width+1);
-      const sy = -at(i-width-1)-2*at(i-width)-at(i-width+1)+at(i+width-1)+2*at(i+width)+at(i+width+1);
-      const strength = Math.hypot(sx,sy)/4*(c===3?1:.65);
-      if (strength > best) { best = strength; gx = sx; gy = sy; }
-    }
-    magnitude[i] = best;
-    const angle = (Math.atan2(gy,gx)*180/Math.PI+180)%180;
-    direction[i] = angle<22.5||angle>=157.5 ? 0 : angle<67.5 ? 1 : angle<112.5 ? 2 : 3;
-  }
-  const edges = new Float32Array(count);
-  for (let y = 1; y < height-1; y++) for (let x = 1; x < width-1; x++) {
-    const i = y*width+x, offset = [1,width+1,width,width-1][direction[i]], m = magnitude[i];
-    // Strict on one side suppresses doubled lines on flat gradient plateaus.
-    if (alpha[i] && m>magnitude[i-offset] && m>=magnitude[i+offset]) edges[i] = m;
+  // Detect dark strokes, rather than outlining both sides of every pixel edge.
+  // Keep the response continuous so contour interpolation can follow subpixels.
+  // DoG stylization background: https://www.kyprianidis.com/p/cag2012/
+  const fine=blurRGB(rgb,width,height,.8),broad=blurRGB(rgb,width,height,1.76),edges=new Float32Array(count);
+  for(let i=0;i<count;i++){
+    const r=broad[i*3]-fine[i*3],g=broad[i*3+1]-fine[i*3+1],b=broad[i*3+2]-fine[i*3+2];
+    if(alpha[i])edges[i]=Math.max(0,.2126*r+.7152*g+.0722*b,Math.max(r,g,b)*.55);
   }
   return { width, height, darkness, edges, outline:alpha.some(a=>a<255)?trace(alpha,width,height,127.5):'' };
 }
 
 function lineMask(analysis, strength) {
-  const {width,height,edges} = analysis, high = 72-.64*strength, low = high*.45;
+  const {width,height,edges} = analysis, high = 16-.14*strength, low = high*.45;
   const selected = new Uint8Array(edges.length), queue = new Int32Array(edges.length);
   let end = 0;
   for (let i = 0; i < edges.length; i++) if (edges[i]>=high) { selected[i] = 1; queue[end++] = i; }
@@ -103,7 +113,7 @@ function lineMask(analysis, strength) {
       selected[j]=1; queue[end++]=j;
     }
   }
-  return selected;
+  return Float32Array.from(edges,(value,i)=>selected[i]?value:0);
 }
 
 function cachedPath(cache, key, compute) {
@@ -154,14 +164,14 @@ export function createMangaEngine({ resolveColorSources, imageMaskGeometry, crea
     const id='manga-'+esc(layer.id),sx=(geometry?.width??doc.width)/width,sy=(geometry?.height??doc.height)/height;
     const transform=(geometry?geometry.transform+` translate(${fmt(-geometry.width/2)} ${fmt(-geometry.height/2)}) `:'')+`scale(${fmt(sx)} ${fmt(sy)})`;
     const spacing=Math.max(doc.width,doc.height)/p.toneDensity;
-    const defs=`<mask id="${id}-alpha" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="${doc.width}" height="${doc.height}" mask-type="alpha"><use href="#${esc(sourceGroupId)}"/></mask>`+
-      (p.screentone?`<pattern id="${id}-screen" patternUnits="userSpaceOnUse" width="${fmt(spacing/sx)}" height="${fmt(spacing/sy)}" viewBox="0 0 1 1" preserveAspectRatio="none"><rect width="1" height="1" fill="#888888"/><g fill="#000000">${screenGlyph(p.toneShape,p.toneSize/100)}</g></pattern>`:'');
+    const defs=`<mask id="${id}-alpha" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="${doc.width}" height="${doc.height}" mask-type="alpha"><use href="#${esc(sourceGroupId)}"/></mask><path id="${id}-gray" d="${gray}" fill-rule="evenodd"/>`+
+      (p.screentone?`<pattern id="${id}-screen" patternUnits="userSpaceOnUse" width="${Number((spacing/sx).toPrecision(9))}" height="${Number((spacing/sy).toPrecision(9))}" viewBox="0 0 1 1" preserveAspectRatio="none"><g fill="#000000">${screenGlyph(p.toneShape,p.toneSize/100)}</g></pattern>`:'');
     let line='';
     if (p.lineArt) {
-      const path=cachedPath(lines,p.lineStrength+':'+Math.min(1,p.lineWidth),()=>trace(lineMask(analysis,p.lineStrength),width,height,1-Math.min(1,p.lineWidth)/2));
+      const path=cachedPath(lines,p.lineStrength+':'+Math.min(1,p.lineWidth),()=>trace(lineMask(analysis,p.lineStrength),width,height,(16-.14*p.lineStrength)*.45+(1-Math.min(1,p.lineWidth))*2,.1));
       line=`<path data-manga-lines="true" d="${path}" fill="#000000" fill-rule="evenodd" stroke="#000000" stroke-width="${fmt(Math.max(0,p.lineWidth-1))}" stroke-linejoin="round"/>`+(analysis.outline?`<path d="${analysis.outline}" fill="none" stroke="#000000" stroke-width="${fmt(p.lineWidth)}" stroke-linejoin="round"/>`:'');
     }
-    return `<defs>${defs}</defs><g data-manga="true" mask="url(#${id}-alpha)"><rect width="${doc.width}" height="${doc.height}" fill="#ffffff"/><g transform="${transform}"><path data-manga-gray="true" d="${gray}" fill="${p.screentone?'url(#'+id+'-screen)':'#888888'}" fill-rule="evenodd"/><path data-manga-black="true" d="${black}" fill="#000000" fill-rule="evenodd"/>${line}</g></g>`;
+    return `<defs>${defs}</defs><g data-manga="true" mask="url(#${id}-alpha)"><rect width="${doc.width}" height="${doc.height}" fill="#ffffff"/><g transform="${transform}"><use data-manga-gray="true" href="#${id}-gray" fill="#888888"/>${p.screentone?`<use data-manga-screen="true" href="#${id}-gray" fill="url(#${id}-screen)"/>`:''}<path data-manga-black="true" d="${black}" fill="#000000" fill-rule="evenodd"/>${line}</g></g>`;
   }
   return { render };
 }

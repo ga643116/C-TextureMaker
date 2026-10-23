@@ -139,3 +139,59 @@ test('uniform source colors fill image corners even at a one-pixel source resolu
  const png=raster(renderSVG(doc));
  for(const [x,y] of [[0,0],[127,0],[0,127],[127,127]])assert.deepEqual(pixel(png,x,y),[0,0,0,255]);
 });
+
+
+test('line art follows dark strokes as continuous single lines at different angles',()=>{
+ for(const slope of [0,.2,.65,1]){
+  const {doc,effect}=setup((x,y)=>{
+   const distance=Math.abs(y-(slope*(x-64)+64))/Math.hypot(1,slope);
+   const value=Math.round(245-125*Math.exp(-distance*distance/(2*.75*.75)));
+   return [value,value,value,255];
+  },128,128);
+  Object.assign(effect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65});
+  const png=raster(renderSVG(doc)),widths=[];
+  for(let x=20;x<108;x++){
+   const center=Math.round(slope*(x-64)+64);
+   assert.ok(pixel(png,x,center)[0]<128,`slope ${slope}: stroke center remains ink at ${x}`);
+   let runs=0,inside=false,count=0;
+   for(let y=center-5;y<=center+5;y++){
+    const dark=pixel(png,x,y)[0]<128;if(dark){count++;if(!inside)runs++;}inside=dark;
+   }
+   assert.equal(runs,1,`slope ${slope}: no hollow or doubled stroke at ${x}`);widths.push(count);
+   assert.equal(pixel(png,x,center+5)[0],255,'neighboring white paper stays clear');
+  }
+  assert.ok(Math.max(...widths)-Math.min(...widths)<=2,'line width remains stable along a stroke');
+ }
+});
+
+test('curved line art remains connected while weak flat-area noise is suppressed',()=>{
+ const {doc,effect}=setup((x,y)=>{
+  const distance=Math.abs(Math.hypot(x-64,y-64)-36);
+  const value=Math.round(245-125*Math.exp(-distance*distance/(2*.75*.75)));
+  return [value,value,value,255];
+ },128,128);
+ Object.assign(effect.params,{blackLevel:0,whiteLevel:55,lineArt:true,lineStrength:65});
+ const png=raster(renderSVG(doc));
+ for(let degrees=0;degrees<360;degrees+=5){
+  const angle=degrees*Math.PI/180;
+  assert.ok(pixel(png,Math.round(64+36*Math.cos(angle)),Math.round(64+36*Math.sin(angle)))[0]<128,`curve stays connected at ${degrees} degrees`);
+ }
+ doc.layers[0]=source('image',128,128,(x,y)=>{const value=230+(x*17+y*31)%5;return [value,value,value,255];});
+ assert.equal(ink(raster(renderSVG(doc))),0,'low-amplitude noise does not become scattered ink');
+});
+
+test('density 2048 survives serialization and produces finite screened fill even for a tiny source',()=>{
+ const {doc,effect}=setup(()=>[128,128,128,255],128,128);
+ doc.layers[0]=source('image',1,1,()=>[128,128,128,255]);
+ Object.assign(effect.params,{screentone:true,toneDensity:2048});
+ const restored=normalizeDocument(JSON.parse(JSON.stringify(doc)));
+ assert.equal(restored.layers[1].params.toneDensity,2048);
+ const svg=renderSVG(restored),pattern=svg.match(/<pattern id="manga-manga-screen"[^>]+/)[0];
+ for(const name of ['width','height']){
+  const value=Number(pattern.match(new RegExp(name+'="([^\"]+)"'))[1]);
+  assert.ok(value>0&&Math.abs(value-1/2048)<1e-10,`${name} does not round to zero at high density`);
+ }
+ assert.doesNotMatch(svg,/NaN|Infinity/);
+ const center=pixel(raster(svg),64,64);
+ assert.equal(center[3],255);assert.ok(center[0]<=136,'high-density screening retains gray fill instead of disappearing');
+});
