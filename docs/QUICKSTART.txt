@@ -1,5 +1,5 @@
-C-TextureMaker 1.6.3 — Quick Start
-公開版本 | Public release | 公開リリース
+C-TextureMaker 1.7.0 — Quick Start
+功能測試版 | Feature test build | 機能テスト版
 
 已公開版本 / Published downloads / 公開済みバージョン:
 https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.3
@@ -94,3 +94,10 @@ Pixelの密度は長辺のセル数、幅、ブロックサイズで調整でき
 選擇「形狀重繪」並匯入圖片，按「生成」建立可編輯色塊。分塊細碎程度越高會保留更多小區域，調整後按「重新分割」套用；有手動編輯時會先詢問。直邊程度越高，輪廓折線越簡潔，調整不會清除單元編輯。可切換色塊／三色／輪廓線，並調整線稿與色板；原色是區域代表色，不保留原圖紋理。Ctrl＋點擊可複選區塊，點擊空白取消選取；隱藏工具單擊切換顯示，填充顏色可用於改色。藍色邊緣提示滑鼠下的區塊。螢幕取色以左鍵確認，右鍵或 Esc 取消。復原／重做最多保留30步。結果與編輯隨專案保存；生成形狀會跟隨來源圖片移動、縮放、旋轉與翻轉，替換圖片或改變多張來源的相對配置後請重新生成。複雜背景會一起轉換，透明 PNG 最適合剪影效果。
 Select Shape redraw, import an image and Generate editable regions. Higher Region detail retains smaller pieces; use Re-segment after changing it, with confirmation when manual edits exist. Higher Edge straightness simplifies boundaries without clearing region edits. Switch between color blocks, three colors and outlines, with line art and palette controls. Original colors are representative region colors, not original textures. Ctrl-click to multi-select; click empty space to deselect. The hide tool toggles a region on each click; use Fill color to recolor it. Blue hover edges identify the region under the pointer. Screen color picking confirms with left-click and cancels with right-click or Esc. Undo/redo retains up to 30 steps. Results and edits are saved in projects, and generated shapes follow source movement, scale, rotation and flips. Regenerate after replacing sources or changing their relative arrangement. Backgrounds are also converted; transparent PNG works best for cutouts.
 「形状再描画」で画像を読み込み、生成して編集可能な領域を作ります。「分割の細かさ」を上げると小さな領域が残り、変更後は再分割で反映します。手動編集がある場合は確認します。「直線化」は輪郭を簡略化し、領域の編集を保持します。色面／3色／輪郭線を切り替え、線画とパレットも調整できます。元の色は領域の代表色で、元画像のテクスチャではありません。Ctrl＋クリックで複数選択、空白をクリックして解除します。非表示ツールはクリックごとに表示を切り替え、「塗りつぶしの色」で色変更できます。青い枠はポインター下の領域を示します。画面の色取得は左クリックで確定、右クリックかEscでキャンセルします。元に戻す／やり直しは最大30段階です。結果と編集はプロジェクトに保存され、形状は元画像の移動・拡大縮小・回転・反転に追従します。画像の置き換えや複数画像の相対配置を変更した場合は再生成してください。背景も変換されるため、切り抜きには透明PNGが適しています。
+
+
+漫畫網點 / Manga screen / 漫画スクリーン
+---------------------------------------
+選擇「漫畫網點」並匯入圖片，即可轉為白、灰、黑分區與線稿。黑色門檻越高，實黑區域越多；白色門檻越低，白底區域越多。線稿可開關並調整強度及線寬。灰區網點可開關；關閉時使用均勻灰色，開啟時可調整網點大小、密度，以及圓形／方形／菱形／平行線。大小為單格百分比，密度為畫布長邊格數。沿用「全圖層／圖片／無圖片」來源與群組，圖片移動、縮放、旋轉或翻轉後會同步更新；參數隨專案保存，可匯出 SVG／PNG。含漫畫網點的專案請使用 1.7.0 或更新版本。
+Select Manga screen and import an image to extract line art and white, gray and black regions. Raising Black threshold increases solid black areas; lowering White threshold leaves more white paper. Toggle line art and adjust sensitivity and width. Turn screentones off for flat gray, or adjust dot size, density and shape: circle, square, diamond or parallel lines. Size is a percentage of each cell; density is the number of cells along the canvas's long edge. Use the existing All layers / Image / No image sources and groups. Image movement, scaling, rotation and flips update the result. Settings are saved in projects, with SVG/PNG export. Projects containing Manga screen require 1.7.0 or later.
+「漫画スクリーン」で画像を読み込むと、線画と白・グレー・黒の領域に変換します。「黒のしきい値」を上げると黒い領域が増え、「白のしきい値」を下げると白い領域が増えます。線画のオン／オフ、感度、太さを調整できます。網点をオフにすると均一なグレーになり、オンではサイズ、密度、円／四角／ひし形／平行線を選べます。サイズはセルに対する割合、密度はキャンバス長辺のセル数です。既存の「全レイヤー／画像／画像なし」とグループを使用し、画像の移動・拡大縮小・回転・反転に追従します。設定はプロジェクトに保存され、SVG／PNGに書き出せます。漫画スクリーンを含むプロジェクトには1.7.0以降が必要です。

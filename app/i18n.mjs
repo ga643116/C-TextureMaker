@@ -44,6 +44,11 @@ export const TEXT = {
 
  pixelImport:["匯入 Pixel 圖片", "Import Pixel image", "Pixel 画像を読み込む"],
  pixelNoSource:["匯入圖片開始轉換。目前顯示示範色階。", "Import an image to start. A sample gradient is shown until then.", "画像を読み込んで変換を開始。現在はサンプルの階調を表示しています。"],
+ mangaImport:["匯入圖片", "Import image", "画像を読み込む"],
+ mangaNoSource:["請先匯入圖片，作為漫畫效果的來源。", "Import an image to use as the manga source.", "漫画の元画像を使うには、画像を読み込んでください。"],
+ mangaLevels:["明暗分區", "Tone levels", "明暗分割"],
+ mangaLines:["線稿", "Line art", "線画"],
+ mangaScreentone:["灰區網點", "Screentone", "グレートーン"],
  pixelDensity:["像素密度", "Pixel density", "ピクセル密度"],
  pixelCount:["像素量（長邊格數）", "Pixel count (long edge)", "ピクセル数（長辺）"],
  pixelGrid:["像素格尺寸", "Pixel grid", "ピクセルグリッド"],
@@ -165,7 +170,7 @@ Object.assign(TEXT, {
  redrawClearConfirmBody:['重新分割會清除目前所有手動隱藏與改色。你可以取消並保留這些編輯。','Regenerating clears all manual visibility and color edits. Cancel to keep them.','再分割すると手動の表示状態と色の編集がすべて消えます。キャンセルすると編集を保持します。'],
  redrawConfirmGenerate:['清除並重新分割','Clear and regenerate','消去して再分割'],
  redrawStale:['來源或分塊細節已變更；重新生成可更新快照。','The source or detail has changed. Regenerate to update the snapshot.','元画像または分割の細かさが変更されました。再生成するとスナップショットが更新されます。'],
- about:['版本 1.6.3 · 為設計師製作','Version 1.6.3 · Made for making','バージョン 1.6.3 · デザインのために']
+ about:['版本 1.7.0 · 為設計師製作','Version 1.7.0 · Made for making','バージョン 1.7.0 · デザインのために']
 });
 export function translator(lang='zh') {const i={zh:0,en:1,ja:2}[lang]??0; return (key)=>TEXT[key]?.[i]??key;}
 export function localized(value,lang) {return typeof value==='object'?(value[lang]??value.en??value.zh):value;}

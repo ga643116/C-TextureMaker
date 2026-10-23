@@ -83,8 +83,8 @@ function documentWithCachedPattern(activeType = 'dots', cachedType = 'grid') {
   return document;
 }
 
-test('all eighteen patterns restore their independent full settings after switching away and back', () => {
-  assert.equal(patternIds.length, 18);
+test('all nineteen patterns restore their independent full settings after switching away and back', () => {
+  assert.equal(patternIds.length, 19);
   let layer = createLayer(patternIds[0], 'round-trip');
   layer.visible = false;
   const expected = new Map();

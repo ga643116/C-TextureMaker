@@ -18,7 +18,7 @@ test('patterns preserve transparency and image-dependent redraw waits for genera
     const image=raster(renderSVG(setup(p.id)));
     let painted=0,empty=0;
     for(let i=3;i<image.data.length;i+=4){if(image.data[i]>0)painted++;else empty++;}
-    if(p.id==='redraw'){assert.equal(painted,0,'redraw without generated image regions stays empty');continue;}
+    if(['redraw','manga'].includes(p.id)){assert.equal(painted,0,'image-dependent patterns without source results stay empty');continue;}
     assert.ok(painted>500,`${p.id}: artwork must not be blank`);
     if(['lowpoly','pixel'].includes(p.id)){
       assert.equal(empty,0,'default filled patterns intentionally cover the entire tile');

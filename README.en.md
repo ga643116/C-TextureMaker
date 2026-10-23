@@ -1,6 +1,6 @@
 # C-TextureMaker
 
-An offline Windows pattern studio for creating transparent, seamless-ready assets from 18 adjustable pattern families, with SVG and PNG export.
+An offline Windows pattern studio for creating transparent, seamless-ready assets from 19 adjustable pattern families, with SVG and PNG export.
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
@@ -9,6 +9,8 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 [See what's new in 1.6.3](docs/releases/v1.6.3.md#english)
 
 **This update**: the Windows app now uses the yellow-and-black logo in the taskbar and File Explorer, retaining the Shape redraw and editing improvements from 1.6.2.
+
+**In development · 1.7.0 test build**: Manga screen converts color images into line art and black, white and gray regions, with optional screentones and adjustable size, density and shape. The public download remains 1.6.3.
 
 https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
@@ -32,7 +34,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ## Features
 
-- 18 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, radial beams, Pixel art, and Shape redraw.
+- 19 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, radial beams, Pixel art, Shape redraw, and Manga screen.
 - Shape redraw converts images into editable color regions, with controls for region detail, edge straightness, line art and palettes. Multi-select, hide/show and recolor regions; generated shapes follow source image transforms.
 - Pixel supports 2–256 colors, extracted/built-in/custom palettes, sampling and dithering, with canvas-size or native pixel-grid export. Use Ctrl+G to group, multi-select layers and drag to reorder or move into and out of groups.
 - Adjust shape, color, rotation, scale, and position live. Use layers, presets, undo/redo, and .ctm projects. Projects support up to 16 content layers plus 16 groups; work and preferences are saved locally.

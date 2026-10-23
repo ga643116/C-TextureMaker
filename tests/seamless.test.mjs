@@ -7,9 +7,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Resvg} from '@resvg/resvg-js';
 import {PNG} from 'pngjs';
-import {PATTERNS,createDocument,createLayer,renderSVG,normalizeDocument} from '../app/engine.mjs';
+import {PATTERNS,createDocument,createLayer,createImageMaskLayer,renderSVG,normalizeDocument} from '../app/engine.mjs';
 
-const setup=type=>{const d=createDocument();d.width=384;d.height=320;d.seamless=true;d.layers=[createLayer(type,'seamless-test')];d.layers[0].color='#111111';if(type==='redraw')d.layers[0].redrawData={version:1,width:128,height:128,detail:55,regions:[{id:'r0',color:'#111111',role:2,rings:[[16,16,112,16,112,112,16,112]]}],lines:[]};return d;};
+const mangaPixel=new PNG({width:1,height:1});mangaPixel.data.set([128,128,128,255]);
+const mangaSource='data:image/png;base64,'+PNG.sync.write(mangaPixel).toString('base64');
+const setup=type=>{const d=createDocument();d.width=384;d.height=320;d.seamless=true;d.layers=[createLayer(type,'seamless-test')];d.layers[0].color='#111111';if(type==='redraw')d.layers[0].redrawData={version:1,width:128,height:128,detail:55,regions:[{id:'r0',color:'#111111',role:2,rings:[[16,16,112,16,112,112,16,112]]}],lines:[]};if(type==='manga')d.layers.push(createImageMaskLayer({id:'manga-source',name:'Manga source',image:mangaSource,imageWidth:1,imageHeight:1,mode:'color',colorMap:{width:1,height:1,rgba:Buffer.from([128,128,128,255]).toString('base64')}}));return d;};
 const raster=svg=>PNG.sync.read(new Resvg(svg).render().asPng());
 const centers=svg=>[...svg.matchAll(/<g transform="rotate\([-\d.]+ ([-\d.]+) ([-\d.]+)\)">/g)].map(m=>[Number(m[1]),Number(m[2])]);
 const source=svg=>svg.slice(svg.indexOf('<g id="source-seamless-test"'),svg.indexOf('</defs>'));

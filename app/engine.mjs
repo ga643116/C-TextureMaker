@@ -10,6 +10,7 @@ import { createImageSources } from './image-sources.mjs';
 import { renderContours } from './contours.mjs';
 import { renderLowPoly } from './low-poly.mjs';
 import { createPixelArtEngine } from './pixel-art.mjs';
+import { createMangaEngine } from './manga.mjs';
 import { renderRedraw, normalizeRedrawData, normalizeRedrawEdits } from './shape-redraw.mjs';
 import {normalizeRedrawPlacement,capturePlacement,placementMatrix,multiplyMatrix,layerMatrix,matrixBounds,matrixAttribute} from './redraw-placement.mjs';
 import { canonicalizeLayers, isGroupLayer, isLayerVisible } from './layer-tree.mjs';
@@ -28,6 +29,8 @@ const O = {
 Object.assign(O,{auto:tr('自動量化','Auto quantize','自動量子化'),grayscale:tr('灰階','Grayscale','グレースケール'),retro:tr('復古綠四色','Retro green','レトログリーン'),custom:tr('自訂色盤','Custom palette','カスタムパレット'),canvas:tr('畫布尺寸','Canvas size','キャンバスサイズ'),longEdge:tr('長邊','Long edge','長辺'),width:tr('寬度','Width','幅'),block:tr('像素塊尺寸','Pixel block size','ピクセルブロックサイズ'),average:tr('平均','Average','平均'),nearest:tr('最近鄰','Nearest','ニアレスト'),bilinear:tr('雙線性','Bilinear','バイリニア'),oklab:tr('OKLab','OKLab','OKLab'),rgb:tr('RGB','RGB','RGB'),bayer4:tr('Bayer 4×4','Bayer 4×4','Bayer 4×4'),'floyd-steinberg':tr('Floyd–Steinberg','Floyd–Steinberg','Floyd–Steinberg')});
 Object.assign(L,{detail:tr('分塊細碎程度','Region detail','分割の細かさ'),straightness:tr('直邊程度','Edge straightness','直線化の強さ'),redrawLines:tr('保留線稿','Extract line art','線画を抽出'),lineWidth:tr('線稿線寬','Line art width','線画の太さ'),lineColor:tr('線稿顏色','Line art color','線画の色'),outlineWidth:tr('外輪廓線寬','Outer outline width','外枠の太さ')});
 Object.assign(O,{blocks:tr('色塊','Color blocks','色面'),three:tr('三色','Three colors','3色'),outline:tr('輪廓線','Outlines','輪郭線'),original:tr('原色','Original colors','元の色'),poster:tr('經典剪紙','Paper cut','切り紙'),ocean:tr('海洋藍','Ocean','オーシャン'),forest:tr('森林綠','Forest','フォレスト')});
+Object.assign(L,{blackLevel:tr('黑色門檻','Black threshold','黒のしきい値'),whiteLevel:tr('白色門檻','White threshold','白のしきい値'),lineArt:tr('提取線稿','Extract line art','線画を抽出'),lineStrength:tr('線稿強度','Line sensitivity','線画の感度'),toneSize:tr('網點大小（%）','Dot size (%)','網点サイズ (%)'),toneDensity:tr('網點密度（長邊格數）','Screen density (long edge)','網点密度（長辺の数）'),toneShape:tr('網點形狀','Screen shape','網点の形'),screentone:tr('灰區使用網點','Screen gray areas','グレー領域に網点を使用')});
+Object.assign(O,{line:tr('平行線','Parallel lines','平行線')});
 const control = (key, type, min, max, step = 1, values = null, labelKey = key) => ({
   key, label: L[labelKey] ?? tr(labelKey, labelKey, labelKey), type,
   ...(type === 'range' ? { min, max, step } : {}),
@@ -53,6 +56,7 @@ export const PATTERNS = [
   make('lowpoly','pattern',tr('低多邊形','Low Poly','ローポリ'),tr('不規則三角面與色彩漸層，可使用圖片逐面取色。','Irregular triangular facets with gradients or sampled image colors.','不規則な三角面にグラデーションや画像の色を適用。'),{points:180,jitter:0.85,colorVariation:0.18,gradientAngle:0},[R('points',16,3000),R('jitter',0,1,0.01),R('colorVariation',0,1,0.01),R('gradientAngle',-180,180)]),
   make('pixel','pattern',tr('像素圖樣','Pixel art','ピクセルアート'),tr('以來源圖片色彩或自訂色盤生成清晰像素格。','Build crisp pixel cells from an image source or a custom palette.','画像またはカスタムパレットから鮮明なピクセルセルを生成。'),{sizeMode:'longEdge',blockSize:8,pixelCount:64,colorCount:16,resample:'average',colorDistance:'oklab',dither:'none',ditherStrength:0.6,brightness:0,contrast:0,saturation:0,alphaThreshold:0.5,paletteMode:'auto',outputSize:'canvas'},[S('sizeMode',['longEdge','width','block']),R('blockSize',1,256),R('pixelCount',4,512),R('colorCount',2,256),S('resample',['average','nearest','bilinear']),S('colorDistance',['oklab','rgb']),S('dither',['none','bayer4','floyd-steinberg']),R('ditherStrength',0,1,0.05),R('brightness',-1,1,0.05),R('contrast',-1,1,0.05),R('saturation',-1,1,0.05),R('alphaThreshold',0,1,0.01),S('paletteMode',['auto','grayscale','retro','custom']),S('outputSize',['canvas','grid'])]),
   make('redraw','pattern',tr('形狀重繪','Shape redraw','形状再描画'),tr('將圖片重新分割為可編輯的剪影色塊與線稿。','Redraw images as editable color regions and line art.','画像を編集可能な色面と線画に再描画。'),{detail:55,straightness:2,mode:'blocks',paletteMode:'original',lines:false,lineWidth:1,lineColor:'#202020',outlineWidth:0},[R('detail',0,100),R('straightness',0,12,0.25),S('mode',['blocks','three','outline']),S('paletteMode',['original','poster','ocean','forest','custom']),T('lines','redrawLines'),R('lineWidth',0,12,0.25),C('lineColor'),R('outlineWidth',0,12,0.25)]),
+  make('manga','pattern',tr('漫畫網點','Manga screen','漫画スクリーン'),tr('提取線稿與黑白灰分區，在灰色區域加入網點。','Extract line art and black, white and gray regions with optional screentones.','線画と白・黒・グレーの領域を抽出し、グレーに網点を適用。'),{blackLevel:65,whiteLevel:180,lineArt:true,lineStrength:55,lineWidth:1,screentone:true,toneSize:55,toneDensity:100,toneShape:'circle'},[R('blackLevel',0,200),R('whiteLevel',55,255),T('lineArt'),R('lineStrength',0,100),R('lineWidth',.5,3,.25),T('screentone'),R('toneSize',5,95),R('toneDensity',8,256),S('toneShape',['circle','square','diamond','line'])]),
   make('symbols','pattern',tr('符號陣列','Symbol array','シンボル配列'),tr('多種符號與聚焦、循環排列。','Symbol glyphs in uniform, radial or focused layouts.','各種シンボルを均一、放射状、焦点配置。'),{shape:'arrow',arrangement:'uniform',size:20,spacing:72,strokeWidth:2,roundness:0.2,shorten:0.1,filled:false},[S('shape',['arrow','slashes','chevron','bracket','cross','star','circle','square','diamond','triangle','hexagon','ring','heart']),S('arrangement',['uniform','radial','focus','cycle']),R('size',4,512),R('spacing',16,512),R('strokeWidth',0.25,256,0.25),R('roundness',0,1,0.01),R('shorten',0,0.8,0.01),T('filled')]),
   make('nested','radial',tr('巢狀多邊形','Nested polygons','入れ子多角形'),tr('旋轉漸變的同心多邊形。','Nested polygons with twist and optional color gradient.','ねじれと色の変化を備えた多角形の重なり。'),{sides:6,radius:420,radiusStep:28,count:12,twist:0,strokeWidth:2,gradient:true},[R('sides',3,64),R('radius',20,2048),R('radiusStep',2,512),R('count',1,256),R('twist',-180,180),R('strokeWidth',0.25,256,0.25),T('gradient')]),
   make('globe','radial',tr('經緯球體','Globe grid','地球グリッド'),tr('橢圓外框與經緯線。','An elliptical globe outline with longitude and latitude lines.','楕円の外枠と経線、緯線。'),{radiusX:360,radiusY:280,longitudes:12,latitudes:8,strokeWidth:2,tilt:0},[R('radiusX',40,2048),R('radiusY',40,2048),R('longitudes',2,128),R('latitudes',1,128),R('strokeWidth',0.25,256,0.25),R('tilt',-90,90)]),
@@ -305,6 +309,7 @@ function normalizeParams(type, value) {
       assert(c.options.some(o => o.value === v), `Invalid parameter ${c.key}`); out[c.key] = v;
     }
   }
+  if(type==='manga' && out.blackLevel>=out.whiteLevel)out.whiteLevel=out.blackLevel+1;
   return out;
 }
 function normalizePatternState(type, raw, width, height) {
@@ -430,6 +435,7 @@ export const createCompositeColorSampler = (doc, layer, options) => imageSourceE
 export const resolveBelowMasks = (doc, layer) => imageSourceEngine.resolveBelowMasks(doc, layer);
 export const captureRedrawPlacement=(doc,layer)=>capturePlacement(doc,resolveColorSources(doc,layer),imageMaskGeometry);
 export * from './layer-tree.mjs';
+const mangaEngine = createMangaEngine({ resolveColorSources, imageMaskGeometry, createCompositeColorSampler, createImageColorSampler });
 const pixelArtEngine = createPixelArtEngine({ normalizeDocument, isImageMaskLayer, imageMaskGeometry, createImageColorSampler, resolveColorSources, hasColorSource });
 export const getPixelGrid = (doc, layer) => pixelArtEngine.getPixelGrid(doc, layer);
 export const getPixelData = (doc, layer) => pixelArtEngine.getPixelData(doc, layer);
@@ -607,7 +613,9 @@ function renderPattern(layer, doc, preview, metrics = {}, effects = {}) {
     if(field){metrics.world=true;metrics.bounds=field.bounds;return field.content;}
   }
   const out=[]; let primitives=0; const add=v=>{if(v && primitives<6500){out.push(v);primitives++;}};
-  if(type==='redraw') {
+  if(type==='manga') {
+    return mangaEngine.render(doc,layer,effects.sourceGroupId);
+  } else if(type==='redraw') {
     return renderRedraw(layer,doc,{preview});
   } else if(type==='pixel') {
     const data=effects.pixelData??pixelArtEngine.getPixelDataFromNormalized(doc,layer),cellWidth=w/data.width,cellHeight=h/data.height,paths=Array.from({length:data.palette.length},()=>[]);
@@ -771,7 +779,7 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
       parts.push(`<pattern id="${paintId}" x="0" y="0" width="${W}" height="${H}" patternUnits="userSpaceOnUse" patternContentUnits="userSpaceOnUse" patternTransform="${inverse}"><use href="#${color.sourceGroupId}"/></pattern>`);
       fillPaint=`url(#${paintId})`;
     }
-    const metrics={},effects={sampleColor:color.sampleColor,fillPaint};if(layer.type==='pixel')effects.pixelData=pixelArtEngine.getPixelDataFromNormalized(doc,layer);let content=renderPattern(layer,doc,preview,metrics,effects);if(!content)continue;
+    const metrics={},effects={sampleColor:color.sampleColor,sourceGroupId:color.sourceGroupId,fillPaint};if(layer.type==='pixel')effects.pixelData=pixelArtEngine.getPixelDataFromNormalized(doc,layer);let content=renderPattern(layer,doc,preview,metrics,effects);if(!content)continue;
     content=content.replace(/<defs>([\s\S]*?)<\/defs>/g,(_,definitions)=>{parts.push(definitions);return '';});
     content+=renderCellLinks(layer,doc,metrics);
     const delta=layer.type==='redraw'?placementMatrix(layer.redrawPlacement,doc,resolveColorSources(doc,layer),imageMaskGeometry):null;
@@ -790,7 +798,7 @@ export function renderSVG(document, { preview = false, repeat = 1 } = {}) {
       const extent=Math.hypot(cx,cy)*Math.max(1,layer.scale);
       parts.push(`<mask id="mask-${esc(layer.id)}" maskUnits="userSpaceOnUse" x="${fmt(cx-extent)}" y="${fmt(cy-extent)}" width="${fmt(2*extent)}" height="${fmt(2*extent)}" mask-type="alpha"><image href="${esc(layer.mask)}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="none"${maskTransform}/></mask>`);
     }
-    if(color.hasSource&&!['lowpoly','pixel','redraw'].includes(layer.type)&&!fillPaint){
+    if(color.hasSource&&!['lowpoly','pixel','redraw','manga'].includes(layer.type)&&!fillPaint){
       const geometry=content.replace(/ data-(?:cell|layer|cx|cy|hidden)="[^"]*"/g,''),masked=layer.mask?`<g mask="url(#mask-${esc(layer.id)})">${geometry}</g>`:geometry,copies=[];
       for(let oy=range.y0;oy<=range.y1;oy++)for(let ox=range.x0;ox<=range.x1;ox++)copies.push(`<g transform="translate(${fmt(ox*W)} ${fmt(oy*H)})"><g transform="${transform}">${masked}</g></g>`);
       parts.push(`<mask id="image-color-shape-${layer.id}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}" mask-type="alpha">${copies.join('')}</mask>`);
