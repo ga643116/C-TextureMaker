@@ -13,19 +13,11 @@ export function effectThumbnail(type){
    const ring=[points[y][x],points[y][x+1],points[y+1][x+1],points[y+1][x]];
    body+=`<polygon points="${ring.map(p=>p.join(',')).join(' ')}" fill="${shades[(x+y*2)%shades.length]}" fill-opacity=".35" stroke="#777777" stroke-opacity=".65" stroke-width=".6"/>`;
   }
+ }else if(type==='manga'){
+  body='<defs><pattern id="thumb-manga-dots" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#aaaaaa"/><circle cx="4" cy="4" r="1.6" fill="#353535"/></pattern></defs><g stroke="#777777" stroke-width="1.2" stroke-linejoin="round"><path d="M64 16 108 40 64 64 20 40Z" fill="#f5f5f5"/><path d="M20 40 64 64V112L20 88Z" fill="#353535"/><path d="M64 64 108 40V88L64 112Z" fill="url(#thumb-manga-dots)"/></g>';
  }else{
-  const curves=[];
-  for(let i=0;i<11;i++){
-   const y=12+i*10;
-   curves.push(`M10 ${y}C34 ${y-18} 49 ${y+19} 70 ${y+1}S99 ${y-13} 118 ${y-2}`);
-  }
-  if(type==='manga'){
-   body='<defs><pattern id="thumb-manga-dots" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r=".7" fill="#777777"/></pattern><clipPath id="thumb-manga-field"><rect x="10" y="10" width="108" height="108"/></clipPath></defs><g clip-path="url(#thumb-manga-field)">';
-   for(let i=0;i<curves.length;i++)body+=`<path d="${curves[i]}" fill="none" stroke="${i%3===0?'#858585':i%3===1?'#c8c8c8':'url(#thumb-manga-dots)'}" stroke-opacity=".5" stroke-width="7"/>`;
-   body+='</g>';
-  }else{
-   body=curves.map(d=>`<path d="${d}" fill="none" stroke="#858585" stroke-width=".9" stroke-linecap="round"/>`).join('');
-  }
+  const cube=(x,filled)=>`<g transform="translate(${x} 38)" stroke="#777777" stroke-width="2" stroke-linejoin="round"><path d="M20 0 40 12 20 24 0 12Z" fill="${filled?'#cccccc':'none'}"/><path d="M0 12 20 24V52L0 40Z" fill="${filled?'#999999':'none'}"/><path d="M20 24 40 12V40L20 52Z" fill="${filled?'#aaaaaa':'none'}"/></g>`;
+  body=cube(10,true)+'<path d="M58 64h12m-5-5 5 5-5 5" fill="none" stroke="#999999" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>'+cube(78,false);
  }
  return `<svg class="${type}-thumb" viewBox="0 0 128 128" aria-hidden="true">${body}</svg>`;
 }

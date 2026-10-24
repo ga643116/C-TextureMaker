@@ -1076,14 +1076,24 @@ $('#file-image').addEventListener('change',async e=>{
 });
 
 async function playEntrance(){
- const sequence=++entranceSequence;motionRun?.cancel();await document.fonts.ready;if(sequence!==entranceSequence)return;
+ const sequence=++entranceSequence;motionRun?.cancel();
  const app=$('#app');if(!app)return;
- const run=generate(app,{mode:'skeleton',maxParts:180,keys:8});motionRun=run;app.inert=true;app.dataset.entering='true';
- const skip=document.createElement('button');skip.className='motion-skip';skip.textContent=t('skipIntro');skip.onclick=()=>run.cancel();document.body.append(skip);
- const stopOnResize=()=>run.cancel(),stopOnEscape=e=>{if(e.key==='Escape')run.cancel();};
- window.addEventListener('resize',stopOnResize);window.addEventListener('keydown',stopOnEscape);
- await run.finished;skip.remove();window.removeEventListener('resize',stopOnResize);window.removeEventListener('keydown',stopOnEscape);
- if(motionRun===run){motionRun=null;app.inert=false;delete app.dataset.entering;}
+ app.inert=true;app.dataset.booting='true';
+ let run=null,skip=null;
+ const stopOnResize=()=>run?.cancel(),stopOnEscape=e=>{if(e.key==='Escape')run?.cancel();};
+ try{
+  await document.fonts.ready;if(sequence!==entranceSequence)return;
+  run=generate(app,{mode:'skeleton',maxParts:180,keys:8});motionRun=run;app.dataset.entering='true';
+  // generate has synchronously hidden the UI; let its reveal own opacity now.
+  delete app.dataset.booting;
+  skip=document.createElement('button');skip.className='motion-skip';skip.textContent=t('skipIntro');skip.onclick=()=>run.cancel();document.body.append(skip);
+  window.addEventListener('resize',stopOnResize);window.addEventListener('keydown',stopOnEscape);
+  await run.finished;
+ }catch(error){run?.cancel();console.error(error);}
+ finally{
+  skip?.remove();window.removeEventListener('resize',stopOnResize);window.removeEventListener('keydown',stopOnEscape);
+  if(sequence===entranceSequence){motionRun=null;app.inert=false;delete app.dataset.entering;delete app.dataset.booting;}
+ }
 }
 async function initializeApp(){
  storageAvailable=await persistentStorage.initialize();
@@ -1094,9 +1104,9 @@ async function initializeApp(){
  prepareRedrawDocument();savedSnapshot=restored?null:JSON.stringify(doc);storageReady=true;saveState=storageAvailable?(restored?'autosaved':'saveReady'):'storageUnavailable';
  $('#app').inert=false;$('#app').setAttribute('aria-busy','false');renderApp();
   document.documentElement.dataset.appReady='true';nativeHost?.postMessage({type:'window',action:'close-guard-ready'});
- if(restored)toast('restored');if(prefs.motion!==false)playEntrance();
+ if(restored)toast('restored');if(prefs.motion!==false)void playEntrance();else delete $('#app').dataset.booting;
 }
 renderApp();$('#app').inert=true;$('#app').setAttribute('aria-busy','true');
  // A read-only readiness signal for host smoke checks. No production test controls.
- initializeApp().catch(error=>{console.error(error);storageReady=true;storageAvailable=false;saveState='storageUnavailable';$('#app').inert=false;$('#app').setAttribute('aria-busy','false');renderApp();document.documentElement.dataset.appReady='true';nativeHost?.postMessage({type:'window',action:'close-guard-ready'});});
+ initializeApp().catch(error=>{console.error(error);storageReady=true;storageAvailable=false;saveState='storageUnavailable';delete $('#app').dataset.booting;$('#app').inert=false;$('#app').setAttribute('aria-busy','false');renderApp();document.documentElement.dataset.appReady='true';nativeHost?.postMessage({type:'window',action:'close-guard-ready'});});
 window.addEventListener('beforeunload',e=>{if(allowUnload)return;finishPointer();flush();persistAutosaveNow();if(!nativeHost&&!allowUnload&&isDirty()){e.preventDefault();e.returnValue='';}});
