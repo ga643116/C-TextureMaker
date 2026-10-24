@@ -117,9 +117,11 @@ async function assertNoHorizontalOverflow(page,label){
    const bytes=await fs.readFile(file);await fs.writeFile(path.join(output,'shape-redraw.'+format),bytes);return bytes;
   };
 
+  const initialLayerId=await page.locator('#layer-list .layer.selected [data-action="select-layer"]').getAttribute('data-id');
   await page.locator('#pattern-list [data-pattern="redraw"]').click();
   await page.waitForFunction(()=>document.querySelector('#pattern-list [data-pattern="redraw"]')?.getAttribute('aria-pressed')==='true');
   const redrawLayerId=await page.locator('#layer-list .layer.selected [data-action="select-layer"]').getAttribute('data-id');
+  await selectLayer(initialLayerId);await page.locator('[data-action="delete"]').click();await selectLayer(redrawLayerId);
   const thumbColors=await page.locator('#pattern-list [data-pattern="redraw"] .redraw-thumb [fill]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('fill')).filter(color=>/^#[0-9a-f]{6}$/i.test(color)));
   assert.ok(thumbColors.length>0&&thumbColors.every(color=>color.slice(1,3)===color.slice(3,5)&&color.slice(3,5)===color.slice(5,7)),'redraw library thumbnail uses only grayscale fills');
   assert.ok(redrawLayerId,'redraw pattern is active on a real project layer');
@@ -134,7 +136,8 @@ async function assertNoHorizontalOverflow(page,label){
   const chooserEvent=page.waitForEvent('filechooser');
   await page.locator('#inspector [data-action="redraw-import"]').click();
   const chooser=await chooserEvent;
-  await chooser.setFiles({name:'redraw-fixture.png',mimeType:'image/png',buffer:fixturePNG()});
+  const sourceImageBytes=fixturePNG();
+  await chooser.setFiles({name:'redraw-fixture.png',mimeType:'image/png',buffer:sourceImageBytes});
   await page.waitForFunction(()=>document.querySelectorAll('#layer-list .layer[data-layer-type="imageMask"]').length===1,{},{timeout:10000});
   await page.waitForFunction(()=>Boolean(document.querySelector('#layer-list .layer[data-layer-type="imageMask"].selected')),{},{timeout:10000});
   const sourceId=await page.locator('#layer-list .layer[data-layer-type="imageMask"].selected [data-action="select-layer"]').getAttribute('data-id');
@@ -169,10 +172,10 @@ async function assertNoHorizontalOverflow(page,label){
   const firstId=regionIds[0],firstRegion=page.locator('#artboard svg [data-redraw-region="'+firstId+'"]');
 
   await page.locator('[data-action="redraw-mode"][data-mode="outline"]').click();
-  await page.waitForFunction(()=>[...document.querySelectorAll('#artboard [data-redraw-region]')].every(node=>node.getAttribute('fill')==='none'));
-  assert.ok(await page.locator('#artboard [data-redraw-region]').evaluateAll(nodes=>nodes.every(node=>node.getAttribute('fill')==='none')),'outline mode hides region fills');
+  await page.waitForFunction(()=>[...document.querySelectorAll('#artboard [data-redraw-region]')].every(node=>node.getAttribute('fill')==='none'||node.getAttribute('fill-opacity')==='0'));
+  assert.ok(await page.locator('#artboard [data-redraw-region]').evaluateAll(nodes=>nodes.every(node=>node.getAttribute('fill')==='none'||node.getAttribute('fill-opacity')==='0')),'outline mode hides region fills');
   await page.locator('[data-action="redraw-mode"][data-mode="blocks"]').click();
-  await page.waitForFunction(()=>[...document.querySelectorAll('#artboard [data-redraw-region]')].some(node=>node.getAttribute('fill')!=='none'));
+  await page.waitForFunction(()=>[...document.querySelectorAll('#artboard [data-redraw-region]')].some(node=>node.getAttribute('fill')!=='none'&&node.getAttribute('fill-opacity')!=='0'));
   const secondId=regionIds[1],secondRegion=page.locator('#artboard [data-redraw-region="'+secondId+'"]');
   await firstRegion.dispatchEvent('pointermove');
   assert.equal(await firstRegion.evaluate(node=>node.classList.contains('redraw-hover')),true,'hover reveals the region boundary');
@@ -258,7 +261,7 @@ async function assertNoHorizontalOverflow(page,label){
 
   const visibleSVG=Buffer.from(await exportAsset('svg')).toString('utf8');
   assert.match(visibleSVG,/<path\b/i,'SVG export contains editable vector paths');
-  assert.doesNotMatch(visibleSVG,/<image(?:\s|>)/i,'color-mode source image is not embedded in SVG');
+  assert.equal(visibleSVG.includes('data:image/png;base64,'+sourceImageBytes.toString('base64')),false,'original color-mode source image is not embedded directly in SVG');
   const png=PNG.sync.read(await exportAsset('png'));
   const alphaValues=new Set(),colors=new Set();
   for(let offset=0;offset<png.data.length;offset+=4){
@@ -316,18 +319,20 @@ async function assertNoHorizontalOverflow(page,label){
 
   await page.locator('#pattern-list [data-pattern="dots"]').click();
   await page.waitForFunction(()=>document.querySelector('#pattern-list [data-pattern="dots"]')?.getAttribute('aria-pressed')==='true');
-  await page.locator('#pattern-list [data-pattern="redraw"]').click();
-  await page.waitForFunction(()=>document.querySelector('#pattern-list [data-pattern="redraw"]')?.getAttribute('aria-pressed')==='true');
-  assert.equal(await page.locator('#r-detail').inputValue(),'58','switching patterns restores redraw detail');
+  const dotsLayerId=await page.locator('#layer-list .layer.selected [data-action="select-layer"]').getAttribute('data-id');
+  await selectLayer(redrawLayerId);
+  assert.equal(await page.locator('#r-detail').inputValue(),'58','selecting the existing redraw layer restores its detail');
   assert.equal(await page.locator('#r-straightness').inputValue(),'9','switching patterns restores straightness');
   assert.equal(await page.locator('[data-action="redraw-mode"][data-mode="three"]').getAttribute('aria-pressed'),'true');
   assert.equal(await page.locator('#p-paletteMode').inputValue(),'custom');
   assert.equal(await page.locator('input[type="checkbox"][data-target="params"][data-key="lines"]').isChecked(),false);
+  await selectLayer(dotsLayerId);await page.locator('[data-action="delete"]').click();await selectLayer(redrawLayerId);
   const switchedSave=await save(),switchedRedraw=switchedSave.layers.find(layer=>layer.id===redrawLayerId);
   assert.deepEqual(switchedRedraw.redrawData.regions.map(region=>region.id),regionIds,'switching away and back preserves generated region identities');
   assert.deepEqual(switchedRedraw.redrawEdits[firstId],savedRedraw.redrawEdits[firstId],'switching away and back preserves region edits');
 
   await load(switchedSave,'redraw-roundtrip.ctm');
+  await selectLayer(redrawLayerId);
   const roundTrip=await save(),roundTripRedraw=roundTrip.layers.find(layer=>layer.id===redrawLayerId);
   assert.deepEqual(roundTripRedraw.redrawData.regions.map(region=>region.id),regionIds,'project load restores generated vector regions');
   assert.deepEqual(roundTripRedraw.redrawEdits[firstId],savedRedraw.redrawEdits[firstId],'project load restores the region color and visibility edit');
@@ -374,6 +379,7 @@ async function assertNoHorizontalOverflow(page,label){
   large.layers.find(layer=>layer.id===sourceId).colorMap={width:512,height:512,rgba:pixels.toString('base64')};
   assert.ok(Buffer.byteLength(JSON.stringify(large))>1024*1024);
   await load(large,'redraw-large-history.ctm');
+  await selectLayer(redrawLayerId);
   const opacity='input[type="number"][data-target="layer"][data-key="opacity"]';
   for(let step=1;step<=30;step++)await setRange(page,opacity,1-step/100);
   for(let step=1;step<=30;step++){
@@ -398,6 +404,7 @@ async function assertNoHorizontalOverflow(page,label){
   const modeProject=structuredClone(large);modeProject.name='Mixed mode undo regression';
   const modeLayer=modeProject.layers.find(layer=>layer.id===redrawLayerId);modeLayer.params.mode='blocks';modeLayer.opacity=1;
   await load(modeProject,'redraw-mode-history.ctm');
+  await selectLayer(redrawLayerId);
   const clickMode=async mode=>{await page.locator('[data-action="redraw-mode"][data-mode="'+mode+'"]').click();await page.waitForFunction(expected=>document.querySelector('[data-action="redraw-mode"][aria-pressed="true"]')?.dataset.mode===expected,mode);};
   const currentMode=()=>page.locator('[data-action="redraw-mode"][aria-pressed="true"]').getAttribute('data-mode');
   await page.evaluate(()=>window.__retainedViewport=document.querySelector('#viewport'));

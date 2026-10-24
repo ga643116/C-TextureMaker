@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -47,6 +48,9 @@ namespace CTextureMaker
         private const string HostName = "c-texturemaker.local";
         private const string StartUrl = "https://c-texturemaker.local/index.html";
         private const int MaxSaveBytes = 96 * 1024 * 1024;
+        private const int MaxClipboardImageBytes = 16 * 1024 * 1024;
+        private const int MaxClipboardImageDimension = 8192;
+        private const string ClipboardPngFormat = "PNG";
         private const int MaxIdLength = 128;
         private const int MaxMimeLength = 256;
         private const int WindowStyleCaption = 0x00C00000;
@@ -555,7 +559,8 @@ namespace CTextureMaker
                 if (!String.Equals(messageType, "save", StringComparison.Ordinal) &&
                     !String.Equals(messageType, "open", StringComparison.Ordinal) &&
                     !String.Equals(messageType, "external", StringComparison.Ordinal) &&
-                    !String.Equals(messageType, "pick-color", StringComparison.Ordinal))
+                    !String.Equals(messageType, "pick-color", StringComparison.Ordinal) &&
+                    !String.Equals(messageType, "clipboard-image", StringComparison.Ordinal))
                     return;
 
                 requestId = ReadString(message, "id");
@@ -571,6 +576,12 @@ namespace CTextureMaker
                         try { HandleColorPickRequest(requestId); }
                         catch (Exception ex) { PostColorPickResult(requestId, false, false, null, LimitErrorMessage(ex.Message)); }
                     }));
+                else if (String.Equals(messageType, "clipboard-image", StringComparison.Ordinal))
+                    BeginInvoke(new Action(delegate
+                    {
+                        try { HandleClipboardImageRequest(requestId); }
+                        catch (Exception ex) { PostClipboardImageResult(requestId, null, false, ex.Message); }
+                    }));
                 else
                     HandleExternalRequest(message, requestId);
             }
@@ -584,10 +595,131 @@ namespace CTextureMaker
                     PostOpenResult(requestId, false, false, error, null, null, null);
                 else if (String.Equals(messageType, "pick-color", StringComparison.Ordinal))
                     PostColorPickResult(requestId, false, false, null, error);
+                else if (String.Equals(messageType, "clipboard-image", StringComparison.Ordinal))
+                    PostClipboardImageResult(requestId, null, false, error);
                 else if (String.Equals(messageType, "external", StringComparison.Ordinal))
                     PostExternalResult(requestId, false, error);
                 else
                     PostSaveResult(requestId, false, false, error);
+            }
+        }
+
+        private void HandleClipboardImageRequest(string requestId)
+        {
+            if (InvokeRequired || System.Threading.Thread.CurrentThread.GetApartmentState() != System.Threading.ApartmentState.STA)
+                throw new InvalidOperationException("剪貼簿要求必須由 UI STA 執行。");
+
+            byte[] pngBytes = ReadClipboardImageAsPng();
+            PostClipboardImageResult(requestId, pngBytes, pngBytes == null, null);
+        }
+
+        private static byte[] ReadClipboardImageAsPng()
+        {
+            IDataObject clipboardData = Clipboard.GetDataObject();
+            if (clipboardData != null)
+            {
+                object pngData = clipboardData.GetData(ClipboardPngFormat, false);
+                byte[] pngBytes = pngData as byte[];
+                if (pngBytes != null)
+                    return ValidateClipboardPng(pngBytes);
+
+                Stream pngStream = pngData as Stream;
+                if (pngStream != null)
+                {
+                    using (pngStream)
+                    {
+                        if (pngStream.CanSeek)
+                            pngStream.Position = 0;
+                        return ValidateClipboardPng(ReadBoundedClipboardStream(pngStream));
+                    }
+                }
+            }
+
+            using (Image clipboardImage = Clipboard.GetImage())
+            {
+                if (clipboardImage == null)
+                    return null;
+                return EncodeClipboardBitmap(clipboardImage);
+            }
+        }
+
+        private static byte[] ReadBoundedClipboardStream(Stream input)
+        {
+            using (MemoryStream output = new MemoryStream())
+            {
+                byte[] buffer = new byte[81920];
+                int read;
+                while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    if (output.Length + read > MaxClipboardImageBytes)
+                        throw new InvalidDataException("剪貼簿 PNG 超過 16 MiB 限制。");
+                    output.Write(buffer, 0, read);
+                }
+                return output.ToArray();
+            }
+        }
+
+        private static byte[] ValidateClipboardPng(byte[] pngBytes)
+        {
+            if (pngBytes == null || pngBytes.Length == 0)
+                throw new InvalidDataException("剪貼簿 PNG 資料為空。");
+            if (pngBytes.Length > MaxClipboardImageBytes)
+                throw new InvalidDataException("剪貼簿 PNG 超過 16 MiB 限制。");
+
+            byte[] safeBytes = (byte[])pngBytes.Clone();
+            using (MemoryStream source = new MemoryStream(safeBytes, false))
+            using (Image decodedImage = Image.FromStream(source, false, true))
+            {
+                if (decodedImage.RawFormat.Guid != ImageFormat.Png.Guid)
+                    throw new InvalidDataException("剪貼簿 PNG 格式無效。");
+                ValidateClipboardImageDimensions(decodedImage.Width, decodedImage.Height);
+                using (Bitmap validatedImage = new Bitmap(decodedImage))
+                    ValidateClipboardImageDimensions(validatedImage.Width, validatedImage.Height);
+            }
+            return safeBytes;
+        }
+
+        private static byte[] EncodeClipboardBitmap(Image clipboardImage)
+        {
+            ValidateClipboardImageDimensions(clipboardImage.Width, clipboardImage.Height);
+            using (Bitmap bitmap = new Bitmap(clipboardImage))
+            using (ClipboardImageOutputStream output = new ClipboardImageOutputStream())
+            {
+                bitmap.Save(output, ImageFormat.Png);
+                return output.ToArray();
+            }
+        }
+
+        private static void ValidateClipboardImageDimensions(int width, int height)
+        {
+            if (width < 1 || height < 1 || width > MaxClipboardImageDimension || height > MaxClipboardImageDimension)
+                throw new InvalidDataException("剪貼簿影像尺寸不得超過 8192 × 8192。");
+        }
+
+        private sealed class ClipboardImageOutputStream : MemoryStream
+        {
+            private static void ValidateWrite(long position, long count)
+            {
+                if (count < 0 || count > MaxClipboardImageBytes || position > MaxClipboardImageBytes - count)
+                    throw new InvalidDataException("編碼後的剪貼簿影像超過 16 MiB 限制。");
+            }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                ValidateWrite(Position, count);
+                base.Write(buffer, offset, count);
+            }
+
+            public override void WriteByte(byte value)
+            {
+                ValidateWrite(Position, 1);
+                base.WriteByte(value);
+            }
+
+            public override void SetLength(long value)
+            {
+                ValidateWrite(0, value);
+                base.SetLength(value);
             }
         }
 
@@ -1011,6 +1143,29 @@ namespace CTextureMaker
 
         [DllImport("user32.dll", ExactSpelling = true)]
         private static extern int GetSystemMetrics(int metric);
+
+        private void PostClipboardImageResult(string requestId, byte[] pngBytes, bool empty, string error)
+        {
+            if (IsDisposed || _webView.CoreWebView2 == null)
+                return;
+
+            Dictionary<string, object> result = new Dictionary<string, object>();
+            result["type"] = "clipboard-image-result";
+            result["id"] = requestId;
+            result["ok"] = String.IsNullOrEmpty(error);
+            if (!String.IsNullOrEmpty(error))
+                result["error"] = LimitErrorMessage(error);
+            else if (empty)
+                result["empty"] = true;
+            else
+            {
+                result["empty"] = false;
+                result["mime"] = "image/png";
+                result["base64"] = Convert.ToBase64String(pngBytes);
+            }
+
+            _webView.CoreWebView2.PostWebMessageAsJson(_serializer.Serialize(result));
+        }
 
         private void PostSaveResult(string requestId, bool ok, bool cancelled, string error, string projectToken = null)
         {

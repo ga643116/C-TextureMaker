@@ -82,7 +82,7 @@ async function waitSVGChange(page,before,label){
  assert.notEqual(next,before,label+' updates the rendered SVG');
  return next;
 }
-async function clickPattern(page,type){
+async function addPattern(page,type){
  await page.locator('#pattern-list [data-pattern="'+type+'"]').click();
  await page.waitForFunction(expected=>document.querySelector('#pattern-list [data-pattern="'+expected+'"]')?.getAttribute('aria-pressed')==='true',type,{timeout:10000});
 }
@@ -149,6 +149,8 @@ function readSVGAttribute(svg,name){
    const dirty=await page.locator('html').getAttribute('data-project-dirty')==='true';
    await page.locator('#file-project').setInputFiles({name:'manga-roundtrip.ctm',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
    if(dirty){await page.locator('#unsaved-discard').waitFor({state:'visible',timeout:10000});await page.locator('#unsaved-discard').click();}
+   await page.waitForFunction(expected=>Boolean(document.querySelector('#layer-list .layer[data-layer-id="'+expected+'"]')),mangaLayerId,{timeout:10000});
+   await selectLayer(page,mangaLayerId);
    await page.waitForFunction(()=>Boolean(document.querySelector('#inspector details[data-section="manga-levels"]')),{},{timeout:10000});
   };
   const exportAsset=async(format)=>{
@@ -164,10 +166,10 @@ function readSVGAttribute(svg,name){
   };
 
   await page.locator('#pattern-list [data-pattern="manga"]').waitFor({state:'visible'});
-  await clickPattern(page,'manga');
+  await addPattern(page,'manga');
   const mangaCard=page.locator('#pattern-list [data-pattern="manga"]');
-  assert.equal(await mangaCard.getAttribute('aria-pressed'),'true','Manga card can be selected');
-  const thumbColors=await mangaCard.locator('.manga-thumb [fill],.manga-thumb [stroke]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('fill')||node.getAttribute('stroke')).filter(color=>/^#[0-9a-f]{6}$/i.test(color)));
+  assert.equal(await mangaCard.getAttribute('aria-pressed'),'true','Manga library action adds and selects a pattern layer');
+  const thumbColors=await mangaCard.locator('.manga-thumb [fill],.manga-thumb [stroke]').evaluateAll(nodes=>nodes.flatMap(node=>['fill','stroke'].map(attribute=>node.getAttribute(attribute))).filter(color=>/^#[0-9a-f]{6}$/i.test(color)));
   assert.ok(thumbColors.length>=3,'Manga has an authored grayscale preview thumbnail');
   assert.ok(thumbColors.every(color=>color.slice(1,3)===color.slice(3,5)&&color.slice(3,5)===color.slice(5,7)),'Manga thumbnail uses only black, gray and white');
 
@@ -183,7 +185,7 @@ function readSVGAttribute(svg,name){
   const sourceId=await page.locator('#layer-list .layer[data-layer-type="imageMask"].selected [data-action="select-layer"]').getAttribute('data-id');
   assert.ok(sourceId,'UI import creates an image source layer');
   assert.equal(await page.locator('#inspector [data-action="image-mode"]').inputValue(),'color','Manga import uses a color image source');
-  await clickPattern(page,'manga');
+  await selectLayer(page,mangaLayerId);
   await page.waitForFunction(()=>document.querySelector('#artboard svg')?.outerHTML.includes('data-manga="true"'),{},{timeout:20000});
   const initialSVG=await currentSVG(page);
   assert.ok(initialSVG.includes('data-manga="true"'),'imported image produces visible Manga output');
@@ -263,9 +265,9 @@ function readSVGAttribute(svg,name){
   assert.equal(await currentSVG(page),movedSourceSVG,'Manga output follows the transformed shared image source');
 
   const savedControls={black:Number(await page.locator(numberField('blackLevel')).inputValue()),white:Number(await page.locator(numberField('whiteLevel')).inputValue()),lineArt:await page.locator(lineToggle).isChecked(),lineDetail:Number(await page.locator(numberField('lineDetail')).inputValue()),lineSmooth:Number(await page.locator(numberField('lineSmooth')).inputValue()),lineScale:Number(await page.locator(numberField('lineScale')).inputValue()),lineWidth:Number(await page.locator(numberField('lineWidth')).inputValue()),screentone:await page.locator(toneToggle).isChecked(),toneSize:Number(await page.locator(numberField('toneSize')).inputValue()),toneDensity:Number(await page.locator(numberField('toneDensity')).inputValue()),toneShape:await page.locator(shapeField).inputValue()};
-  await clickPattern(page,'dots');
-  await clickPattern(page,'manga');
-  assert.deepEqual({black:Number(await page.locator(numberField('blackLevel')).inputValue()),white:Number(await page.locator(numberField('whiteLevel')).inputValue()),lineArt:await page.locator(lineToggle).isChecked(),lineDetail:Number(await page.locator(numberField('lineDetail')).inputValue()),lineSmooth:Number(await page.locator(numberField('lineSmooth')).inputValue()),lineScale:Number(await page.locator(numberField('lineScale')).inputValue()),lineWidth:Number(await page.locator(numberField('lineWidth')).inputValue()),screentone:await page.locator(toneToggle).isChecked(),toneSize:Number(await page.locator(numberField('toneSize')).inputValue()),toneDensity:Number(await page.locator(numberField('toneDensity')).inputValue()),toneShape:await page.locator(shapeField).inputValue()},savedControls,'switching to another pattern and back preserves Manga controls');
+  await addPattern(page,'dots');
+  await selectLayer(page,mangaLayerId);
+  assert.deepEqual({black:Number(await page.locator(numberField('blackLevel')).inputValue()),white:Number(await page.locator(numberField('whiteLevel')).inputValue()),lineArt:await page.locator(lineToggle).isChecked(),lineDetail:Number(await page.locator(numberField('lineDetail')).inputValue()),lineSmooth:Number(await page.locator(numberField('lineSmooth')).inputValue()),lineScale:Number(await page.locator(numberField('lineScale')).inputValue()),lineWidth:Number(await page.locator(numberField('lineWidth')).inputValue()),screentone:await page.locator(toneToggle).isChecked(),toneSize:Number(await page.locator(numberField('toneSize')).inputValue()),toneDensity:Number(await page.locator(numberField('toneDensity')).inputValue()),toneShape:await page.locator(shapeField).inputValue()},savedControls,'adding another pattern and selecting the existing Manga layer preserves its controls');
 
   const savedProject=await saveProject();
   const savedManga=savedProject.layers.find(layer=>layer.id===mangaLayerId&&layer.type==='manga');

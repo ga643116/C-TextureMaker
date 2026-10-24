@@ -37,6 +37,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 ## Features
 
 - 20 pattern families: concentric arcs, halftone dots, HUD gauges, radial ticks, decorative barcodes, wave lines, parallel lines, dot grids, polygon grids, contours, Low Poly, symbol arrays, nested polygons, a globe, engineering grids, radial beams, Pixel art, Shape redraw, Manga screen, and Line extraction.
+- Clicking a library pattern adds a new layer above the selection. Ctrl+V or Paste image in the canvas context menu imports clipboard images as new color-image layers; text fields retain normal text paste.
 - Shape redraw converts images into editable color regions, with controls for region detail, edge straightness, line art and palettes. Multi-select, hide/show and recolor regions; generated shapes follow source image transforms.
 - Pixel supports 2–256 colors, extracted/built-in/custom palettes, sampling and dithering, with canvas-size or native pixel-grid export. Use Ctrl+G to group, multi-select layers and drag to reorder or move into and out of groups.
 - Adjust shape, color, rotation, scale, and position live. Use layers, presets, undo/redo, and .ctm projects. Projects support up to 16 content layers plus 16 groups; work and preferences are saved locally.
