@@ -11,7 +11,10 @@ import {PATTERNS,createDocument,createLayer,createImageMaskLayer,renderSVG,norma
 
 const mangaPixel=new PNG({width:1,height:1});mangaPixel.data.set([128,128,128,255]);
 const mangaSource='data:image/png;base64,'+PNG.sync.write(mangaPixel).toString('base64');
-const setup=type=>{const d=createDocument();d.width=384;d.height=320;d.seamless=true;d.layers=[createLayer(type,'seamless-test')];d.layers[0].color='#111111';if(type==='redraw')d.layers[0].redrawData={version:1,width:128,height:128,detail:55,regions:[{id:'r0',color:'#111111',role:2,rings:[[16,16,112,16,112,112,16,112]]}],lines:[]};if(type==='manga')d.layers.push(createImageMaskLayer({id:'manga-source',name:'Manga source',image:mangaSource,imageWidth:1,imageHeight:1,mode:'color',colorMap:{width:1,height:1,rgba:Buffer.from([128,128,128,255]).toString('base64')}}));return d;};
+const linePixel=new PNG({width:32,height:32});
+for(let y=0;y<32;y++)for(let x=0;x<32;x++){const v=x>=14&&x<=17?20:255;linePixel.data.set([v,v,v,255],(y*32+x)*4);}
+const lineSource='data:image/png;base64,'+PNG.sync.write(linePixel).toString('base64');
+const setup=type=>{const d=createDocument();d.width=384;d.height=320;d.seamless=true;d.layers=[createLayer(type,'seamless-test')];d.layers[0].color='#111111';if(type==='redraw')d.layers[0].redrawData={version:1,width:128,height:128,detail:55,regions:[{id:'r0',color:'#111111',role:2,rings:[[16,16,112,16,112,112,16,112]]}],lines:[]};if(type==='manga')d.layers.push(createImageMaskLayer({id:'manga-source',name:'Manga source',image:mangaSource,imageWidth:1,imageHeight:1,mode:'color',colorMap:{width:1,height:1,rgba:Buffer.from([128,128,128,255]).toString('base64')}}));if(type==='lineart')d.layers.push(createImageMaskLayer({id:'line-source',name:'Line source',image:lineSource,imageWidth:32,imageHeight:32,mode:'color',colorMap:{width:32,height:32,rgba:linePixel.data.toString('base64')}}));return d;};
 const raster=svg=>PNG.sync.read(new Resvg(svg).render().asPng());
 const centers=svg=>[...svg.matchAll(/<g transform="rotate\([-\d.]+ ([-\d.]+) ([-\d.]+)\)">/g)].map(m=>[Number(m[1]),Number(m[2])]);
 const source=svg=>svg.slice(svg.indexOf('<g id="source-seamless-test"'),svg.indexOf('</defs>'));

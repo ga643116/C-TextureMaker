@@ -211,13 +211,13 @@ function readSVGAttribute(svg,name){
   const lineBeforeOff=await currentSVG(page);
   await setToggle(page,lineToggle,false);
   const lineOff=await waitSVGChange(page,lineBeforeOff,'disabling line art');
-  for(const key of ['lineStrength','lineWidth'])assert.equal(await page.locator(rangeField(key)).isDisabled(),true,'line control '+key+' is disabled when line art is off');
+  for(const key of ['lineDetail','lineSmooth','lineScale','lineWidth'])assert.equal(await page.locator(rangeField(key)).isDisabled(),true,'line control '+key+' is disabled when line art is off');
   await setToggle(page,lineToggle,true);
   await waitSVGChange(page,lineOff,'enabling line art');
   for(const field of [rangeField('lineWidth'),numberField('lineWidth')])assert.equal(await page.locator(field).getAttribute('min'),'0.25','line width range and number controls allow a quarter pixel');
   let before=await currentSVG(page);
-  await setInputValue(page,rangeField('lineStrength'),88);
-  let after=await waitSVGChange(page,before,'line strength');
+  await setInputValue(page,rangeField('lineDetail'),149);
+  let after=await waitSVGChange(page,before,'line detail');
   before=after;await setInputValue(page,rangeField('lineWidth'),2.5);
   after=await waitSVGChange(page,before,'line width');
   before=after;await setInputValue(page,rangeField('lineWidth'),0.25);
@@ -262,16 +262,16 @@ function readSVGAttribute(svg,name){
   await selectLayer(page,mangaLayerId);
   assert.equal(await currentSVG(page),movedSourceSVG,'Manga output follows the transformed shared image source');
 
-  const savedControls={black:Number(await page.locator(numberField('blackLevel')).inputValue()),white:Number(await page.locator(numberField('whiteLevel')).inputValue()),lineArt:await page.locator(lineToggle).isChecked(),lineStrength:Number(await page.locator(numberField('lineStrength')).inputValue()),lineWidth:Number(await page.locator(numberField('lineWidth')).inputValue()),screentone:await page.locator(toneToggle).isChecked(),toneSize:Number(await page.locator(numberField('toneSize')).inputValue()),toneDensity:Number(await page.locator(numberField('toneDensity')).inputValue()),toneShape:await page.locator(shapeField).inputValue()};
+  const savedControls={black:Number(await page.locator(numberField('blackLevel')).inputValue()),white:Number(await page.locator(numberField('whiteLevel')).inputValue()),lineArt:await page.locator(lineToggle).isChecked(),lineDetail:Number(await page.locator(numberField('lineDetail')).inputValue()),lineSmooth:Number(await page.locator(numberField('lineSmooth')).inputValue()),lineScale:Number(await page.locator(numberField('lineScale')).inputValue()),lineWidth:Number(await page.locator(numberField('lineWidth')).inputValue()),screentone:await page.locator(toneToggle).isChecked(),toneSize:Number(await page.locator(numberField('toneSize')).inputValue()),toneDensity:Number(await page.locator(numberField('toneDensity')).inputValue()),toneShape:await page.locator(shapeField).inputValue()};
   await clickPattern(page,'dots');
   await clickPattern(page,'manga');
-  assert.deepEqual({black:Number(await page.locator(numberField('blackLevel')).inputValue()),white:Number(await page.locator(numberField('whiteLevel')).inputValue()),lineArt:await page.locator(lineToggle).isChecked(),lineStrength:Number(await page.locator(numberField('lineStrength')).inputValue()),lineWidth:Number(await page.locator(numberField('lineWidth')).inputValue()),screentone:await page.locator(toneToggle).isChecked(),toneSize:Number(await page.locator(numberField('toneSize')).inputValue()),toneDensity:Number(await page.locator(numberField('toneDensity')).inputValue()),toneShape:await page.locator(shapeField).inputValue()},savedControls,'switching to another pattern and back preserves Manga controls');
+  assert.deepEqual({black:Number(await page.locator(numberField('blackLevel')).inputValue()),white:Number(await page.locator(numberField('whiteLevel')).inputValue()),lineArt:await page.locator(lineToggle).isChecked(),lineDetail:Number(await page.locator(numberField('lineDetail')).inputValue()),lineSmooth:Number(await page.locator(numberField('lineSmooth')).inputValue()),lineScale:Number(await page.locator(numberField('lineScale')).inputValue()),lineWidth:Number(await page.locator(numberField('lineWidth')).inputValue()),screentone:await page.locator(toneToggle).isChecked(),toneSize:Number(await page.locator(numberField('toneSize')).inputValue()),toneDensity:Number(await page.locator(numberField('toneDensity')).inputValue()),toneShape:await page.locator(shapeField).inputValue()},savedControls,'switching to another pattern and back preserves Manga controls');
 
   const savedProject=await saveProject();
   const savedManga=savedProject.layers.find(layer=>layer.id===mangaLayerId&&layer.type==='manga');
   const savedSource=savedProject.layers.find(layer=>layer.id===sourceId&&layer.type==='imageMask');
   assert.ok(savedManga,'UI project download contains the Manga layer');
-  assert.deepEqual({black:savedManga.params.blackLevel,white:savedManga.params.whiteLevel,lineArt:savedManga.params.lineArt,lineStrength:savedManga.params.lineStrength,lineWidth:savedManga.params.lineWidth,screentone:savedManga.params.screentone,toneSize:savedManga.params.toneSize,toneDensity:savedManga.params.toneDensity,toneShape:savedManga.params.toneShape},savedControls,'project download serializes the visible Manga controls');
+  assert.deepEqual({black:savedManga.params.blackLevel,white:savedManga.params.whiteLevel,lineArt:savedManga.params.lineArt,lineDetail:savedManga.params.lineDetail,lineSmooth:savedManga.params.lineSmooth,lineScale:savedManga.params.lineScale,lineWidth:savedManga.params.lineWidth,screentone:savedManga.params.screentone,toneSize:savedManga.params.toneSize,toneDensity:savedManga.params.toneDensity,toneShape:savedManga.params.toneShape},savedControls,'project download serializes the visible Manga controls');
   assert.equal(savedManga.params.lineWidth,0.25,'project download does not clamp the minimum line width');
   assert.equal(savedSource?.mode,'color','project download preserves the color source mode');
   assert.equal(savedSource?.offsetX,48,'project download preserves source movement');
@@ -288,7 +288,7 @@ function readSVGAttribute(svg,name){
    assert.equal(headings.length,3,locale+' displays all three Manga control groups');
    assert.ok(headings.every(text=>text.length>0),locale+' Manga headings are present');
    const labels=await page.locator('#inspector details[data-section^="manga-"] input[type="range"],#inspector details[data-section^="manga-"] input[type="checkbox"],#inspector details[data-section^="manga-"] select[data-target="params"]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('aria-label')||node.labels?.[0]?.textContent.trim()||node.closest('.field')?.querySelector('label')?.textContent.trim()));
-   assert.equal(labels.length,9,locale+' labels every Manga setting');
+   assert.equal(labels.length,11,locale+' labels every Manga setting');
    assert.ok(labels.every(text=>text&&text.length>0),locale+' Manga controls have visible localized labels');
    for(const width of [1440,960,880]){
     await page.setViewportSize({width,height:960});

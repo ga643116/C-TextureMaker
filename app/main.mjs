@@ -38,7 +38,9 @@ let selected=doc.layers[0].id,selectedIds=new Set([selected]),selectionAnchor=se
 let category='all',query='',repeat=1,tileEdges=true,zoom=1,pan={x:0,y:0},focus=false;
 let imageTarget='customMotif',editMode='toggle',connectStart=null,frame=0,saveTimer=0,toastTimer=0,motionRun=null,autosaveSequence=0,autosaveQueue=Promise.resolve(),presetWriteQueue=Promise.resolve();
 let canvasTool='cursor',brushSize=clamp(Number(prefs.brushSize)||64,4,4096),sharedShapes=[],shapeLibraryReady=false,shapeWriteQueue=Promise.resolve();
+let linePreviewTimer=0;
 const thumbs=new Map(),nativeSaves=new Map();
+thumbs.set('lineart','<svg viewBox="0 0 72 48" aria-hidden="true"><rect x="3" y="3" width="66" height="42" rx="2" fill="#fafafa" stroke="#777" stroke-width="1.5"/><path d="M14 37c-2-8 0-18 7-23 5-4 12-3 15 2 2 4 1 7-1 10m-13-8 4 3m7-2 4 2M22 31l5-3 6 2m-5-14 2-3m-9 28c4-5 9-7 15-6m9-16 7-5 6 4 1 9-8 6-6-3m1-10 2 3m6-4 2 3m-8 10 6-1m-35-6 4 3" fill="none" stroke="#292929" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 39c9-3 13-3 20-1m15-3 13 2" fill="none" stroke="#999" stroke-width="1.2"/></svg>');
 const redrawJobs=new Map(),redrawStates=new Map(),redrawSnapshotSignatures=new Map(),sourceQualityJobs=new WeakMap();
 let selectedRedrawRegion=null,selectedRedrawIds=new Set(),hoveredRedrawRegion=null,colorPicker=null,redrawEditMode='select',redrawToolColor='#202020',redrawConfirmResolve=null;
 const nativeHost=window.chrome?.webview;
@@ -265,8 +267,21 @@ function renderMangaInspector(savedSections=null){
  $('#inspector').innerHTML='<div class="inspector-head"><div class="eyebrow">'+esc(t('properties'))+'</div><h1>'+esc(label(p.name))+'</h1><p>'+esc(label(p.description))+'</p><div class="actions"><button class="button primary" data-action="add-color-image">'+icon('image')+esc(t('mangaImport'))+'</button>'+ib('reset','reset','reset')+ib('save-preset','star','savePreset')+'</div><p class="helper">'+esc(sourceHint)+'</p></div>'
  +details('image-source',t('imageSource'),imageSourceControls(layer))
  +details('manga-levels',t('mangaLevels'),controls(['blackLevel','whiteLevel']))
- +details('manga-lines',t('mangaLines'),controls(['lineArt'])+controls(['lineStrength','lineWidth'],!layer.params.lineArt))
+ +details('manga-lines',t('mangaLines'),controls(['lineArt'])+controls(['lineDetail','lineSmooth','lineScale','lineWidth'],!layer.params.lineArt))
  +details('manga-screentone',t('mangaScreentone'),controls(['screentone'])+controls(['toneSize','toneDensity','toneShape'],!layer.params.screentone))
+ +details('appearance',t('appearance'),numeric('opacity',t('opacity'),layer.opacity,0,1,.01,'layer'),false)
+ +details('transform',t('transform'),numeric('rotation',t('rotation'),layer.rotation,-180,180,1,'layer')+numeric('scale',t('scale'),layer.scale,.1,2,.01,'layer')+numeric('offsetX',t('offsetX'),layer.offsetX,-doc.width,doc.width,1,'layer')+numeric('offsetY',t('offsetY'),layer.offsetY,-doc.height,doc.height,1,'layer'),false)
+ +canvasControls();
+ for(const el of $$('.inspector details'))if(sections.has(el.dataset.section))el.open=sections.get(el.dataset.section);
+}
+function renderLineartInspector(savedSections=null){
+ const layer=active(),p=pattern('lineart'),sources=resolveColorSources(doc,layer);
+ const sections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
+ const controls=keys=>keys.map(key=>p.controls.find(control=>control.key===key)).filter(Boolean).map(control=>renderControl(control,layer,p)).join('');
+ const sourceHint=sources.length?sources.map(source=>source.name).join(' · '):t(hasColorSource(doc,layer)?'imageSourceEmpty':'lineartNoSource');
+ $('#inspector').innerHTML='<div class="inspector-head"><div class="eyebrow">'+esc(t('properties'))+'</div><h1>'+esc(label(p.name))+'</h1><p>'+esc(label(p.description))+'</p><div class="actions"><button class="button primary" data-action="add-color-image">'+icon('image')+esc(t('mangaImport'))+'</button>'+ib('reset','reset','reset')+ib('save-preset','star','savePreset')+'</div><p class="helper">'+esc(sourceHint)+'</p><p class="helper">'+esc(t('lineartHint'))+'</p></div>'
+ +details('image-source',t('imageSource'),imageSourceControls(layer))
+ +details('lineart-lines',t('mangaLines'),controls(['lineDetail','lineSmooth','lineScale','lineWidth','lineColor']))
  +details('appearance',t('appearance'),numeric('opacity',t('opacity'),layer.opacity,0,1,.01,'layer'),false)
  +details('transform',t('transform'),numeric('rotation',t('rotation'),layer.rotation,-180,180,1,'layer')+numeric('scale',t('scale'),layer.scale,.1,2,.01,'layer')+numeric('offsetX',t('offsetX'),layer.offsetX,-doc.width,doc.width,1,'layer')+numeric('offsetY',t('offsetY'),layer.offsetY,-doc.height,doc.height,1,'layer'),false)
  +canvasControls();
@@ -448,14 +463,14 @@ function renderRedrawInspector(savedSections=null){
  $('#inspector').innerHTML='<div class="inspector-head redraw-inspector-head"><div class="eyebrow">'+esc(t('properties'))+'</div><h1>'+esc(label(p.name))+'</h1><p>'+esc(label(p.description))+'</p><div class="actions"><button class="button" data-action="redraw-import">'+icon('image')+esc(t('redrawImport'))+'</button><button type="button" class="button primary" data-action="redraw-generate" '+(status.state==='busy'?'disabled':'')+'>'+icon('random')+esc(t(layer.redrawData?'redrawRegenerate':'redrawGenerate'))+'</button>'+ib('reset','reset','reset')+ib('save-preset','star','savePreset')+'</div><p class="helper">'+esc(sources.length?sources.map(source=>source.name).join(' · '):t(hasColorSource(doc,layer)?'imageSourceEmpty':'redrawSourceRequired'))+'</p><p id="redraw-generation-status" class="redraw-status" role="status" aria-live="polite" data-state="'+esc(status.state)+'">'+esc(statusText)+'</p>'+(stale?'<p class="helper redraw-stale" data-redraw-stale>'+esc(t('redrawStale'))+'</p>':'')+'</div>'
  +details('image-source',t('imageSource'),imageSourceControls(layer),false)
  +details('redraw-settings',t('redrawSettings'),controls(['detail'])+'<p class="helper">'+esc(t('redrawDetailHint'))+'</p><div class="redraw-mode-switch">'+modeButtons+'</div>'+controls(['straightness','paletteMode'])+'<div class="redraw-palette-wrap"><div class="field-title">'+esc(t('redrawPaletteLabel'))+'</div><div class="redraw-palette">'+redrawPaletteMarkup(layer)+'</div><p class="helper">'+esc(t('redrawPaletteHint'))+'</p></div>')
- +details('redraw-lines',t('redrawLinesSection'),controls(['lines','lineWidth','lineColor','outlineWidth']),false)
+ +details('redraw-lines',t('redrawLinesSection'),controls(['lines','lineDetail','lineSmooth','lineScale','lineWidth','lineColor','outlineWidth']),false)
  +details('redraw-edits',t('redrawEditsTitle'),regionActions+'<div class="field"><label for="redraw-tool-color">'+esc(t('redrawToolColor'))+'</label><input id="redraw-tool-color" type="color" value="'+esc(redrawToolColor)+'"></div>'+selectedRegion+'<button type="button" class="button" data-action="redraw-restore" '+(Object.keys(layer.redrawEdits??{}).length?'':'disabled')+'>'+esc(t('redrawClearEdits'))+'</button>')
  +details('appearance',t('appearance'),numeric('opacity',t('opacity'),layer.opacity,0,1,.01,'layer'),false)
  +details('transform',t('transform'),numeric('rotation',t('rotation'),layer.rotation,-180,180,1,'layer')+numeric('scale',t('scale'),layer.scale,.1,2,.01,'layer')+numeric('offsetX',t('offsetX'),layer.offsetX,-doc.width,doc.width,1,'layer')+numeric('offsetY',t('offsetY'),layer.offsetY,-doc.height,doc.height,1,'layer'),false)
  +canvasControls();
  for(const el of $$('.inspector details'))if(sections.has(el.dataset.section))el.open=sections.get(el.dataset.section);
 }
-function renderInspector(savedSections=null){const l=active();if(isGroupLayer(l)){renderGroupInspector(savedSections);return;}if(l.type==='manga'){renderMangaInspector(savedSections);return;}if(l.type==='pixel'){renderPixelInspector(savedSections);return;}if(l.type==='redraw'){renderRedrawInspector(savedSections);return;}if(isImageMaskLayer(l)){renderMaskInspector(savedSections);return;}const p=pattern(l.type);const openSections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
+function renderInspector(savedSections=null){const l=active();if(isGroupLayer(l)){renderGroupInspector(savedSections);return;}if(l.type==='manga'){renderMangaInspector(savedSections);return;}if(l.type==='lineart'){renderLineartInspector(savedSections);return;}if(l.type==='pixel'){renderPixelInspector(savedSections);return;}if(l.type==='redraw'){renderRedrawInspector(savedSections);return;}if(isImageMaskLayer(l)){renderMaskInspector(savedSections);return;}const p=pattern(l.type);const openSections=savedSections??new Map($$('.inspector details').map(el=>[el.dataset.section,el.open]));
  const fields=geometryFields(l,p);
  const palettes=[['#34392e','#97a184'],['#151515','#868686'],['#f0ebdd','#9b927e'],['#e3edcd','#839968'],['#66789a','#b7c5df'],['#c16a46','#e6ac83'],['#916b80','#d9b2c7']];
  let extra='';if(['dots','polygons'].includes(l.type))extra=details('cells',t('editCells'),`<div class="cell-modes">${['toggle','erase','paint','connect'].map(m=>`<button data-action="edit-mode" data-mode="${m}" class="${editMode===m?'active':''}">${esc(t(m))}</button>`).join('')}</div>${brushControls()}<p class="helper">${esc(t(editMode==='connect'?'connectHint':'cellHint'))}</p><div class="cell-extra-actions"><button class="button primary" data-action="add-image-mask">${icon('image')}${esc(t('addImageMask'))}</button><button class="button" data-action="restore-cells">${esc(t('restoreCells'))}</button><button class="button" data-action="clear-links" ${l.cellLinks?.length?'':'disabled'}>${esc(t('clearLinks'))}</button></div>`);
@@ -464,7 +479,7 @@ function renderInspector(savedSections=null){const l=active();if(isGroupLayer(l)
  for(const el of $$('.inspector details'))if(openSections.has(el.dataset.section))el.open=openSections.get(el.dataset.section);
 }
 async function ensurePixelSourceQuality(targetLayer=activePattern()){
- if(!targetLayer||!['pixel','redraw','manga'].includes(targetLayer.type))return;
+ if(!targetLayer||!['pixel','redraw','manga','lineart'].includes(targetLayer.type))return;
  const sources=resolveColorSources(doc,targetLayer).filter(source=>source.colorMap&&Math.max(source.colorMap.width??0,source.colorMap.height??0)<Math.min(1024,Math.max(source.imageWidth,source.imageHeight)));
  for(const source of sources){
   const pending=sourceQualityJobs.get(source);if(pending){await pending;continue;}
@@ -499,7 +514,7 @@ function syncDirty(knownDirty=null){const dirty=knownDirty??(pendingBefore!==nul
 function syncHistory(knownDirty=null){syncDirty(knownDirty);const u=$('[data-action=undo]'),r=$('[data-action=redo]');if(u)u.disabled=!past.length;if(r)r.disabled=!future.length;}
 function push(before){if(JSON.stringify(doc)===before){syncDirty();return;}past.push(captureHistorySnapshot(JSON.parse(before),historySnapshotSource(past)));if(past.length>30)past.shift();future=[];syncHistory();autosave();}
 function flush(){if(pendingBefore!==null){const b=pendingBefore;pendingBefore=null;push(b);}}
-function mutate(fn,render=true){finishPointer();flush();connectStart=null;const before=JSON.stringify(doc);fn();push(before);if(render)renderApp();else schedulePreview();}
+function mutate(fn,render=true){finishPointer();clearTimeout(linePreviewTimer);linePreviewTimer=0;flush();connectStart=null;const before=JSON.stringify(doc);fn();push(before);if(render)renderApp();else schedulePreview();}
 function historySnapshotSource(stack){return stack.findLast(entry=>entry.kind!=='redraw-mode')??null;}
 function setRedrawMode(mode){
  if(!['blocks','three','outline'].includes(mode)||active().type!=='redraw')return;
@@ -529,6 +544,7 @@ function autosave(knownDirty=null){syncDirty(knownDirty);if(!storageReady)return
 function persistAutosaveNow(){clearTimeout(saveTimer);saveTimer=0;if(!storageReady)return;const version=++autosaveSequence;setSaveState('saving');queueAutosave(clone(doc),version);}
 function toast(key,raw=false){clearTimeout(toastTimer);const el=$('#toast');el.textContent=raw?key:t(key);el.classList.add('show');toastTimer=setTimeout(()=>el.classList.remove('show'),3000);}
 function schedulePreview(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;renderPreview();});}
+function scheduleFlowLinePreview(finish){clearTimeout(linePreviewTimer);if(finish){linePreviewTimer=0;schedulePreview();return;}linePreviewTimer=setTimeout(()=>{linePreviewTimer=0;schedulePreview();},140);}
 function renderPreview(){prepareRedrawDocument();const start=performance.now(),rgb=activePattern().color.slice(1).match(/../g).map(v=>parseInt(v,16)),bright=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>160;$('#artboard').style.setProperty('--checker1',bright?'#424242':'#ffffff');$('#artboard').style.setProperty('--checker2',bright?'#373737':'#f0f0f0');try{$('#artboard').innerHTML=renderSVG(doc,{preview:true,repeat});syncRedrawSelection();}catch(e){console.error(e);toast('exportError');return;}const elapsed=performance.now()-start;$('#render-time').textContent=`${Math.round(elapsed)} ms`;$('#dimensions-label').textContent=`${doc.width} × ${doc.height}`;$('#artboard-label').textContent=`${doc.width} × ${doc.height}${repeat===3?' / 3 × 3':''} · ${doc.seamless?t('seamless'):t('single')}`;const alphaStatus=$('#alpha-status'),alphaStatusTitle=t(doc.transparent?'alphaStatusTransparent':'alphaStatusSolid');alphaStatus.textContent=t(doc.transparent?'alpha':'solid');alphaStatus.setAttribute('aria-pressed',String(doc.transparent));alphaStatus.setAttribute('aria-label',alphaStatusTitle);alphaStatus.title=alphaStatusTitle;$('#tile-grid').hidden=!(repeat===3&&tileEdges);syncPixelInspector();fitLayout();}
 function fitLayout(){const vp=$('#viewport');if(!vp)return;const rect=vp.getBoundingClientRect(),base=Math.min((rect.width-82)/(doc.width*repeat),(rect.height-76)/(doc.height*repeat));const unit=Math.max(.025,base)*zoom;const art=$('#artboard'),wrap=$('#artboard-wrap');art.style.width=`${doc.width*repeat*unit}px`;art.style.height=`${doc.height*repeat*unit}px`;wrap.style.transform=`translate(calc(-50% + ${pan.x}px),calc(-50% + ${pan.y}px))`;$('#zoom-label').textContent=`${Math.round(unit*100)}%`;if(lastCanvasPoint)updateBrushCursor(lastCanvasPoint);updateConnectGuide();updateMaskOverlay();}
 function fit(){finishPointer();zoom=1;pan={x:0,y:0};fitLayout();}
@@ -556,9 +572,10 @@ function setField(el,finish){
  if(pendingBefore===null)pendingBefore=JSON.stringify(doc);if(active().type==='pixel'&&target==='params'&&key==='paletteMode'&&v==='custom')active().pixelPalette=[...getPixelData(doc,active()).palette];if(active().type==='redraw'&&target==='params'&&key==='paletteMode'&&v==='custom'&&!active().redrawPalette?.length)active().redrawPalette=[...getRedrawPalette(active())];if(target==='params'&&active().type==='redraw'&&key==='detail')cancelRedrawJob(active().id);if((target==='layer'&&key==='imageSource')||(target==='layer'&&isImageMaskLayer(active()))||(target==='doc'&&['width','height','seed'].includes(key)))cancelAllRedrawJobs();connectStart=null;if(target==='params'&&key==='shape')active().customMotif=null;if(target==='doc'&&['width','height'].includes(key)){Object.assign(doc,resizeCanvas(doc.width,doc.height,key,v,doc.aspectRatio));syncCanvasFields(finish?null:el);v=doc[key];}else if(target==='group'&&key==='name')obj[key]=String(v).replace(/[\u0000-\u001f\u007f-\u009f]/g,'').trim().slice(0,80)||obj[key];else obj[key]=v;if(linkedKey)obj[linkedKey]=linkedValue;syncDirty();
  if(isImageMaskLayer(active())){for(const output of $$('[data-mask-threshold]'))output.textContent=active().threshold;for(const button of $$('[data-action=mask-invert]'))button.setAttribute('aria-pressed',String(active().invert));}
  for(const [syncKey,syncValue] of [[key,v],...(linkedKey?[[linkedKey,linkedValue]]:[])])$$(`[data-target="${target}"][data-key="${syncKey}"]`).forEach(other=>{if(other!==el){if(other.type==='checkbox')other.checked=syncValue;else other.value=syncValue;}});
+ const flowLinePreview=target==='params'&&['redraw','manga','lineart'].includes(active().type)&&['lineDetail','lineSmooth','lineScale'].includes(key);
  const fastLine=active().type==='redraw'&&target==='params'&&key==='lineColor';
  if(fastLine){for(const path of $$('#artboard [data-redraw-line-color]'))if(path.dataset.redrawLineColor===active().id)path.setAttribute('stroke',v);for(const path of $$('#artboard [data-redraw-line-fill]'))if(path.dataset.redrawLineFill===active().id)path.setAttribute('fill',v);}
- else schedulePreview();if(finish){if(fastLine)schedulePreview();flush();if(target==='group'&&key==='name'){renderLayers();renderInspector();$('#art-title').textContent=layerName(active());}if(target==='params'&&(el.tagName==='SELECT'||el.type==='checkbox'||key==='diagonals'))renderInspector();if(target==='doc'&&['width','height'].includes(key))fit();if(target==='layer'&&key==='imageSource'){renderInspector();void ensurePixelSourceQuality().catch(error=>console.error(error));}}
+ else if(flowLinePreview)scheduleFlowLinePreview(finish);else schedulePreview();if(finish){if(fastLine)schedulePreview();flush();if(target==='group'&&key==='name'){renderLayers();renderInspector();$('#art-title').textContent=layerName(active());}if(target==='params'&&(el.tagName==='SELECT'||el.type==='checkbox'||key==='diagonals'))renderInspector();if(target==='doc'&&['width','height'].includes(key))fit();if(target==='layer'&&key==='imageSource'){renderInspector();void ensurePixelSourceQuality().catch(error=>console.error(error));}}
 }
 
 document.addEventListener('click',e=>{
@@ -569,7 +586,7 @@ document.addEventListener('click',e=>{
  const send=(color,event)=>{if(input.isConnected&&selected===layerId){input.value=color;input.dispatchEvent(new Event(event,{bubbles:true}));}};
  colorPicker=openColorPicker({anchor:input,value:input.value,onInput:color=>send(color,'input'),onChange:color=>send(color,'change'),onPick:async()=>{document.documentElement.classList.add('screen-picking');try{return await screenColorPicker.pick();}finally{document.documentElement.classList.remove('screen-picking');}},labels:{title:t(input.id==='redraw-tool-color'?'redrawToolColor':'color'),done:t('close'),hue:t('pickerHue'),area:t('pickerArea'),hex:t('pickerHex'),pick:t('pickerScreen'),picking:t('pickerPicking'),pickError:t('pickerFailed')}});
 });
-document.addEventListener('click',async e=>{if(!storageReady)return;const card=e.target.closest('[data-pattern]');if(card){const type=card.dataset.pattern;mutate(()=>{const l=activePattern();cancelRedrawJob(l.id);redrawSnapshotSignatures.delete(l.id);clearRedrawSelection();const fresh=switchLayerPattern(l,type);doc.layers[doc.layers.indexOf(l)]=fresh;setLayerSelection([fresh.id]);});return;}
+document.addEventListener('click',async e=>{if(!storageReady)return;const card=e.target.closest('[data-pattern]');if(card){const type=card.dataset.pattern;mutate(()=>{const l=activePattern();cancelRedrawJob(l.id);redrawSnapshotSignatures.delete(l.id);clearRedrawSelection();const fresh=switchLayerPattern(l,type);doc.layers[doc.layers.indexOf(l)]=fresh;setLayerSelection([fresh.id]);if(type==='lineart')doc.transparent=true;});return;}
  const row=e.target.closest('.layer[data-layer-id]');if(row&&!e.target.closest('button,input,select,textarea,[data-action],.mask-layer-controls')){selectLayer(row.dataset.layerId,{toggle:e.ctrlKey||e.metaKey,range:e.shiftKey});return;}
  if(!e.target.closest('.save-control'))closeSaveMenu();
  const b=e.target.closest('[data-action]');if(!b||b.tagName==='SELECT')return;const a=b.dataset.action;
@@ -791,7 +808,7 @@ async function readMaskImage(file){
  if(!mime)throw new Error('Invalid image format');
  return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(new Blob([bytes],{type:mime}));});
 }
-function chooseImageMask(id=null,mode=['lowpoly','pixel','redraw','manga'].includes(activePattern().type)?'color':'mask'){
+function chooseImageMask(id=null,mode=['lowpoly','pixel','redraw','manga','lineart'].includes(activePattern().type)?'color':'mask'){
  if(!id&&contentLayerCount()>=16){toast('maxLayers');return;}
  const layer=active();maskImportMode=mode;maskImportTarget=id;maskImportAnchorId=layer.id;maskImportParentId=parentOf(layer);maskImportPatternTarget=isPatternLayer(layer)?layer.id:null;maskImportDocument=doc;$('#file-image-mask').click();
 }
@@ -801,7 +818,7 @@ $('#file-image-mask').addEventListener('change',async e=>{
  maskImportTarget=null;maskImportPatternTarget=null;maskImportAnchorId=null;maskImportParentId=null;maskImportDocument=null;if(!file||!storageReady||doc!==originalDoc)return;
  await importImageLayer(file,target,mode,patternTarget,anchorId,parentId);
 });
-async function importImageLayer(file,target=null,mode=['lowpoly','pixel','redraw','manga'].includes(activePattern().type)?'color':'mask',patternTarget=isPatternLayer(active())?active().id:null,anchorId=active().id,parentId=parentOf(active())){
+async function importImageLayer(file,target=null,mode=['lowpoly','pixel','redraw','manga','lineart'].includes(activePattern().type)?'color':'mask',patternTarget=isPatternLayer(active())?active().id:null,anchorId=active().id,parentId=parentOf(active())){
  const generation=projectGeneration,ticket=++maskImportSequence;
  if(!storageReady||navigationBusy||closeRequestBusy)return false;
  toast('maskLoading');
@@ -872,7 +889,7 @@ document.addEventListener('drop',async e=>{
  if(!fileDrag(e))return;e.preventDefault();clearFileDrop();
  if(!storageReady||$('dialog[open]')||dropBusy||navigationBusy||closeRequestBusy||motionRun)return;
  const files=Array.from(e.dataTransfer.files);if(!files.length)return;
- dropBusy=true;const generation=projectGeneration,mode=['lowpoly','pixel','redraw','manga'].includes(activePattern().type)?'color':'mask',anchor=active(),anchorId=anchor.id,parentId=parentOf(anchor),patternTarget=isPatternLayer(anchor)?anchor.id:null;
+ dropBusy=true;const generation=projectGeneration,mode=['lowpoly','pixel','redraw','manga','lineart'].includes(activePattern().type)?'color':'mask',anchor=active(),anchorId=anchor.id,parentId=parentOf(anchor),patternTarget=isPatternLayer(anchor)?anchor.id:null;
  try{for(const file of files){if(generation!==projectGeneration)break;if(!await importImageLayer(file,null,mode,patternTarget,anchorId,parentId))break;}}finally{dropBusy=false;}
 });
 async function setImageMode(id,mode){

@@ -155,6 +155,8 @@ Object.assign(TEXT, {
  redrawPaletteHint:['原色使用來源代表色；也可選擇預設色板或逐格自訂。','Original uses representative source colors. Choose a preset or edit colors individually.','元の色は元画像の代表色を使います。プリセットを選ぶか、色を個別に編集できます。'],
  redrawPaletteColor:['色板顏色','Palette color','パレットの色'],
  redrawLinesSection:['線稿與外輪廓','Line art and outline','線画と外枠'],
+ lineartNoSource:['請先匯入來源圖片。','Import a source image to begin.','まず元画像を読み込んでください。'],
+ lineartHint:['線稿會輸出在透明背景上。','Line art is output on a transparent background.','線画は透明背景で出力されます。'],
  redrawEditsTitle:['區塊編輯','Region edits','領域編集'],
  redrawEditSelect:['選取','Select','選択'],
  redrawEditErase:['隱藏／顯示','Hide / show','非表示／表示'],

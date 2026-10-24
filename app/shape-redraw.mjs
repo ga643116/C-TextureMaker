@@ -392,7 +392,7 @@ function escapeAttr(value) {
   return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function renderRedraw(layer, doc, { preview = false } = {}) {
+export function renderRedraw(layer, doc, { preview = false, lineArt = null } = {}) {
   const data = normalizeRedrawData(layer?.redrawData);
   if (!data || !data.regions.length) return '';
   const edits = normalizeRedrawEdits(layer?.redrawEdits, data);
@@ -408,7 +408,7 @@ export function renderRedraw(layer, doc, { preview = false } = {}) {
   const lineWidth = optionNumber(params, 'lineWidth', 1);
   const outlineWidth = optionNumber(params, 'outlineWidth', 0);
   const lineColor = validHex(params.lineColor) ? canonicalHex(params.lineColor) : '#202020';
-  const showLines = params.lines === true && lineWidth > 0 && data.lines.length > 0;
+  const showLines = params.lines === true && lineWidth > 0 && data.lines.length > 0 && lineArt === null;
   const id = cleanId(layer?.id);
   const escapedLayerId = escapeAttr(layer?.id);
   const lineColorAttrs = preview ? ' data-redraw-line-color="' + escapedLayerId + '"' : '';
@@ -443,12 +443,17 @@ export function renderRedraw(layer, doc, { preview = false } = {}) {
     if (preview && hidden) {
       output.push('<path id="redraw-' + id + '-' + region.id + '" d="' + d + '" fill="' + color + '" fill-opacity="0" fill-rule="evenodd"' + attrs + '/>');
     } else if (outlineMode) {
-      output.push('<path id="redraw-' + id + '-' + region.id + '" d="' + d + '" fill="none" fill-rule="evenodd" clip-rule="evenodd" stroke="' + lineColor + '" stroke-width="' + fmt(lineWidth / maxScale) + '" stroke-linejoin="round"' + lineColorAttrs + attrs + '/>');
+      if(lineArt!==null){
+        if(preview)output.push('<path id="redraw-' + id + '-' + region.id + '" d="' + d + '" fill="' + color + '" fill-opacity="0" fill-rule="evenodd"' + attrs + '/>');
+      } else output.push('<path id="redraw-' + id + '-' + region.id + '" d="' + d + '" fill="none" fill-rule="evenodd" clip-rule="evenodd" stroke="' + lineColor + '" stroke-width="' + fmt(lineWidth / maxScale) + '" stroke-linejoin="round"' + lineColorAttrs + attrs + '/>');
     } else {
       const seam = straightness > 0 ? Math.min(0.75, straightness * 0.06) : 0;
       const stroke = seam ? ' stroke="' + color + '" stroke-width="' + fmt(seam) + '" stroke-linejoin="round"' : '';
       output.push('<path id="redraw-' + id + '-' + region.id + '" d="' + d + '" fill="' + color + '" fill-rule="evenodd" clip-rule="evenodd"' + stroke + attrs + '/>');
     }
+  }
+  if(lineArt!==null&&visibleIndices.length){
+    output.push('<g clip-path="url(#'+clipId+')" pointer-events="none"><g transform="scale('+fmt(1/scaleX)+' '+fmt(1/scaleY)+')">'+lineArt+'</g></g>');
   }
   if (showLines && visibleIndices.length) {
     output.push('<g clip-path="url(#' + clipId + ')" pointer-events="none">');

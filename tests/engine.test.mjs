@@ -7,9 +7,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PATTERNS, createDocument, createLayer, normalizeDocument, renderSVG } from '../app/engine.mjs';
 
-const ids = ['concentric','halftone','hud','ticks','barcode','waves','lines','dots','polygons','contour','lowpoly','pixel','redraw','manga','symbols','nested','globe','grid','rays'];
+const ids = ['concentric','halftone','hud','ticks','barcode','waves','lines','dots','polygons','contour','lowpoly','pixel','redraw','manga','lineart','symbols','nested','globe','grid','rays'];
 
-test('exposes the nineteen localized pattern schemas and renders each default layer', () => {
+test('exposes the twenty localized pattern schemas and renders each default layer', () => {
   assert.deepEqual(PATTERNS.map(p => p.id), ids);
   for (const pattern of PATTERNS) {
     for (const locale of ['zh','en','ja']) {
