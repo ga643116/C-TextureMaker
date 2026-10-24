@@ -4,13 +4,13 @@
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.6.3** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.3/C-TextureMaker-1.6.3-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.3) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
+**v1.7.0** · [Windows x64 ポータブル版をダウンロード](https://github.com/ga643116/C-TextureMaker/releases/download/v1.7.0/C-TextureMaker-1.7.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.7.0) · [ソースコード](https://github.com/ga643116/C-TextureMaker)
 
-[1.6.3 の主な変更点](docs/releases/v1.6.3.md#日本語)
+[1.7.0 の主な変更点](docs/releases/v1.7.0.md#日本語)
 
-**今回の更新**：Windowsアプリのアイコンを黄色地・黒線のロゴに統一し、タスクバーやエクスプローラーでも使用します。1.6.2の形状再描画と操作改善も引き継いでいます。
+**今回の更新**：漫画スクリーンと透明背景の線画抽出を追加し、形状再描画の線を改善しました。クリップボードからの画像貼り付けに対応し、レイヤー操作の応答性も向上しています。
 
-**開発中 · 1.7.0テスト版**：漫画スクリーンと透明背景の線画抽出を追加。形状再描画を含む3種類で Flow-XDoG を共有し、細部・連続性・検出スケール・線幅を調整できます。公開ダウンロードは現在1.6.3です。
+3種類の線画機能で、細部・連続性・検出スケール・線幅を調整できます。
 
 線画の解析は元画像の長辺を最大1024 pxとして行います。細部を増やすと弱い線が残る一方、模様も増える場合があります。SVGには透明なラスター線画マスクを埋め込むため、線ごとに編集できるベクターパスではありません。
 
@@ -50,7 +50,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ## ダウンロードと起動
 
-1. [C-TextureMaker-1.6.3-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.3/C-TextureMaker-1.6.3-win-x64.zip) をダウンロードし、全体を展開します。
+1. [C-TextureMaker-1.7.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.7.0/C-TextureMaker-1.7.0-win-x64.zip) をダウンロードし、全体を展開します。
 2. C-TextureMaker.exe を起動します。app フォルダーと DLL は隣に残してください。
 3. 書き込み可能な場所にフォルダー全体を置くと、隣接する data フォルダーに作業と設定を保存できます。
 
@@ -72,7 +72,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 最初の保存時に場所を選び、次回から同じファイルを更新します。右側の矢印またはCtrl+Shift+Sで別名保存できます。.ctmを開いた場合もそのファイルへ保存します。各レイヤーのパターン設定とセル編集は切り替え後も記憶され、プロジェクトにも保存されます。リセットは現在のパターンだけに適用されます。
 
-1.6.3は旧プロジェクトと既存の画像参照を保持します。Pixelやグループを含むプロジェクトは1.5.0以降で開いてください。
+1.7.0は旧プロジェクトと既存の画像参照を保持します。Pixelやグループを含むプロジェクトは1.5.0以降で開いてください。
 
 ## ソースからビルド
 

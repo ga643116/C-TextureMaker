@@ -4,13 +4,13 @@
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.6.3** · [下載 Windows x64 便攜包](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.3/C-TextureMaker-1.6.3-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.3) · [原始碼](https://github.com/ga643116/C-TextureMaker)
+**v1.7.0** · [下載 Windows x64 便攜包](https://github.com/ga643116/C-TextureMaker/releases/download/v1.7.0/C-TextureMaker-1.7.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.7.0) · [原始碼](https://github.com/ga643116/C-TextureMaker)
 
-[查看 1.6.3 更新重點](docs/releases/v1.6.3.md#繁體中文)
+[查看 1.7.0 更新重點](docs/releases/v1.7.0.md#繁體中文)
 
-**本次更新**：Windows 程式圖示改為黃底黑線 Logo，統一工作列與檔案總管中的識別；保留 1.6.2 的形狀重繪與操作改善。
+**本次更新**：新增漫畫網點與透明背景線稿提取，改善形狀重繪的線條品質；支援剪貼簿貼圖，並提升圖層操作反應。
 
-**開發中 · 1.7.0 測試版**：新增漫畫網點與透明背景的線稿提取。形狀重繪、漫畫網點和線稿提取共用 Flow-XDoG，可調整細節量、線條連貫、偵測尺度與線寬。公開下載目前仍為 1.6.3。
+線稿細節量、線條連貫、偵測尺度與線寬皆可調整，三種圖樣使用一致的線稿控制。
 
 線稿分析以來源長邊最多 1024 px 進行；細節量提高會保留更多弱線，也可能增加紋理。線稿以透明點陣遮罩嵌入 SVG，並非可逐條編輯的向量路徑。
 
@@ -52,7 +52,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ## 下載與啟動
 
-1. 下載 [C-TextureMaker-1.6.3-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.3/C-TextureMaker-1.6.3-win-x64.zip) 並完整解壓縮。
+1. 下載 [C-TextureMaker-1.7.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.7.0/C-TextureMaker-1.7.0-win-x64.zip) 並完整解壓縮。
 2. 開啟資料夾中的 C-TextureMaker.exe，保留旁邊的 app 資料夾與 DLL。
 3. 建議將整個資料夾放在可寫入的位置；程式會在旁邊的 data 資料夾保存工作與偏好。
 
@@ -74,7 +74,7 @@ Low Poly 可調頂點密度、形狀變化、主／次色、漸層角度與色�
 
 首次「儲存專案」會選擇位置，之後直接更新同一檔案；按鈕旁箭頭或 Ctrl+Shift+S 可另存新檔。開啟既有 .ctm 後也可直接儲存。各圖層會記住每種圖樣的參數與單元編輯，隨專案保存，只有重設目前圖樣才恢復預設。
 
-1.6.3 可開啟舊專案並保留原有圖片來源；含 Pixel 或群組的專案請使用 1.5.0 或更新版本。
+1.7.0 可開啟舊專案並保留原有圖片來源；含 Pixel 或群組的專案請使用 1.5.0 或更新版本。
 
 ## 從原始碼建置
 

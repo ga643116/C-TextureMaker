@@ -4,13 +4,13 @@ An offline Windows pattern studio for creating transparent, seamless-ready asset
 
 [繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**v1.6.3** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.3/C-TextureMaker-1.6.3-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.6.3) · [Source](https://github.com/ga643116/C-TextureMaker)
+**v1.7.0** · [Download the Windows x64 portable package](https://github.com/ga643116/C-TextureMaker/releases/download/v1.7.0/C-TextureMaker-1.7.0-win-x64.zip) · [Release](https://github.com/ga643116/C-TextureMaker/releases/tag/v1.7.0) · [Source](https://github.com/ga643116/C-TextureMaker)
 
-[See what's new in 1.6.3](docs/releases/v1.6.3.md#english)
+[See what's new in 1.7.0](docs/releases/v1.7.0.md#english)
 
-**This update**: the Windows app now uses the yellow-and-black logo in the taskbar and File Explorer, retaining the Shape redraw and editing improvements from 1.6.2.
+**This update**: adds Manga screen and transparent Line extraction, improves Shape redraw lines, supports clipboard image paste, and makes layer interactions more responsive.
 
-**In development · 1.7.0 test build**: Manga screen and transparent Line extraction share Flow-XDoG with Shape redraw. Adjust detail, continuity, detection scale and line weight. The public download remains 1.6.3.
+Detail, continuity, detection scale and line weight are adjustable across all three line-art effects.
 
 Line analysis uses at most 1024 pixels on the source longest edge. Higher detail retains weaker lines but may add texture. SVG embeds the transparent raster ink mask; strokes are not individually editable vector paths.
 
@@ -50,7 +50,7 @@ https://github.com/user-attachments/assets/21d313f7-39f2-4a93-adfb-ed1bd84d94a5
 
 ## Download and launch
 
-1. Download [C-TextureMaker-1.6.3-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.6.3/C-TextureMaker-1.6.3-win-x64.zip) and extract the entire archive.
+1. Download [C-TextureMaker-1.7.0-win-x64.zip](https://github.com/ga643116/C-TextureMaker/releases/download/v1.7.0/C-TextureMaker-1.7.0-win-x64.zip) and extract the entire archive.
 2. Open C-TextureMaker.exe. Keep the app folder and DLL files beside it.
 3. Place the whole folder somewhere writable so the app can save work and preferences in the adjacent data folder.
 
@@ -72,7 +72,7 @@ Low Poly offers vertex density, shape variation, primary / secondary colors, gra
 
 Save project asks for a location once, then updates that file. Use the adjacent arrow or Ctrl+Shift+S for Save As. Opening a .ctm also sets its save destination. Each layer remembers every pattern's settings and cell edits, including across project saves; Reset affects only the current pattern.
 
-1.6.3 opens older projects and retains their image source bindings. Projects containing Pixel or groups require 1.5.0 or later.
+1.7.0 opens older projects and retains their image source bindings. Projects containing Pixel or groups require 1.5.0 or later.
 
 ## Build from source
 
