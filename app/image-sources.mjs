@@ -63,9 +63,13 @@ export function createImageSources({ isImageMaskLayer, imageMaskGeometry, create
       .filter(Boolean);
     if (!samplers.length) return hasColorSource(doc, layer) ? transparent : null;
     return (x, y) => {
+      // An opaque top pixel completely covers lower sources. Keep partial-alpha
+      // pixels on the original bottom-to-top path, with identical rounding.
+      const top=samplers.at(-1)(x,y)??transparent();
+      if(top[3]===255)return top;
       let alpha = 0, red = 0, green = 0, blue = 0;
-      for (const sample of samplers) {
-        const rgba = sample(x, y) ?? transparent();
+      for (let index=0;index<samplers.length;index++) {
+        const rgba = index===samplers.length-1?top:(samplers[index](x, y) ?? transparent());
         const sourceAlpha = clamp(Number(rgba[3]) || 0, 0, 255) / 255;
         const retain = 1 - sourceAlpha;
         red = clamp(Number(rgba[0]) || 0, 0, 255) * sourceAlpha + red * retain;

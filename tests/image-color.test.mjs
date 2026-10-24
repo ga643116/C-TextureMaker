@@ -66,3 +66,16 @@ test('photo-colored Low Poly exports only vector facets, without an unused sourc
  const doc=createDocument();doc.width=doc.height=128;doc.layers=[createLayer('lowpoly','facets'),imageLayer()];
  const svg=renderSVG(doc);assert.match(svg,/<polygon /);assert.doesNotMatch(svg,/<image|data:image/);
 });
+
+
+test('encoded color maps own their pixels and decode identically after cache eviction',()=>{
+ const data=new Uint8ClampedArray([19,23,31,255,71,83,97,128]);
+ const map=encodeColorMap({width:2,height:1,data});
+ const layer={colorMap:map,rotation:0,flipX:false,flipY:false},geometry={cx:1,cy:.5,width:2,height:1};
+ data.fill(0);
+ const sample=()=>createImageColorSampler(layer,geometry,{nearest:true})(1.5,.5);
+ assert.deepEqual(sample(),[71,83,97,128]);
+ for(let i=0;i<9;i++)encodeColorMap({width:1,height:1,data:new Uint8ClampedArray([i,201,43,255])});
+ assert.deepEqual(sample(),[71,83,97,128]);
+ assert.throws(()=>encodeColorMap({width:0,height:1,data:new Uint8ClampedArray()}),/color map/);
+});

@@ -18,7 +18,9 @@ export function normalizeColorMap(value) {
     try { binary=atob(rgba); } catch { throw new TypeError('Invalid image color map data'); }
     if (binary.length!==width*height*4) throw new TypeError('Invalid image color map length');
     if (decoded.size>=8) decoded.delete(decoded.keys().next().value);
-    decoded.set(rgba,Uint8Array.from(binary,c=>c.charCodeAt(0)));
+    const pixels=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)pixels[i]=binary.charCodeAt(i);
+    decoded.set(rgba,pixels);
   } else if(decoded.get(rgba).length!==width*height*4) throw new TypeError('Invalid image color map length');
   return {width,height,rgba};
 }
@@ -26,7 +28,12 @@ export function encodeColorMap({width,height,data}) {
   if (!(data instanceof Uint8ClampedArray) || data.length!==width*height*4) throw new TypeError('Invalid image pixels');
   let binary='';
   for(let i=0;i<data.length;i+=16384)binary+=String.fromCharCode(...data.subarray(i,i+16384));
-  return normalizeColorMap({width,height,rgba:btoa(binary)});
+  const rgba=btoa(binary);
+  if(Number.isInteger(width)&&Number.isInteger(height)&&width>=1&&height>=1&&width<=1024&&height<=1024&&!decoded.has(rgba)){
+    if(decoded.size>=8)decoded.delete(decoded.keys().next().value);
+    decoded.set(rgba,new Uint8Array(data));
+  }
+  return normalizeColorMap({width,height,rgba});
 }
 export function createImageColorSampler(layer,geometry,{nearest=false}={}) {
   const map=normalizeColorMap(layer.colorMap);
@@ -43,11 +50,13 @@ export function createImageColorSampler(layer,geometry,{nearest=false}={}) {
     }
     const px=Math.max(0,Math.min(map.width-1,u*map.width-.5)),py=Math.max(0,Math.min(map.height-1,v*map.height-.5));
     const x0=Math.floor(px),y0=Math.floor(py),x1=Math.min(map.width-1,x0+1),y1=Math.min(map.height-1,y0+1),fx=px-x0,fy=py-y0;
-    let alpha=0,r=0,g=0,b=0;
-    for(const [sx,sy,weight] of [[x0,y0,(1-fx)*(1-fy)],[x1,y0,fx*(1-fy)],[x0,y1,(1-fx)*fy],[x1,y1,fx*fy]]){
-      const i=(sy*map.width+sx)*4,a=pixels[i+3]*weight;
-      alpha+=a;r+=pixels[i]*a;g+=pixels[i+1]*a;b+=pixels[i+2]*a;
-    }
-    return alpha>0?[Math.round(r/alpha),Math.round(g/alpha),Math.round(b/alpha),Math.round(alpha)]:[0,0,0,0];
+    // Four scalar taps avoid allocating nested arrays for every sampled pixel.
+    const i00=(y0*map.width+x0)*4,i10=(y0*map.width+x1)*4,i01=(y1*map.width+x0)*4,i11=(y1*map.width+x1)*4;
+    const a00=pixels[i00+3]*((1-fx)*(1-fy)),a10=pixels[i10+3]*(fx*(1-fy)),a01=pixels[i01+3]*((1-fx)*fy),a11=pixels[i11+3]*(fx*fy);
+    const alpha=a00+a10+a01+a11;
+    if(!alpha)return [0,0,0,0];
+    return [Math.round((pixels[i00]*a00+pixels[i10]*a10+pixels[i01]*a01+pixels[i11]*a11)/alpha),
+      Math.round((pixels[i00+1]*a00+pixels[i10+1]*a10+pixels[i01+1]*a01+pixels[i11+1]*a11)/alpha),
+      Math.round((pixels[i00+2]*a00+pixels[i10+2]*a10+pixels[i01+2]*a01+pixels[i11+2]*a11)/alpha),Math.round(alpha)];
   };
 }

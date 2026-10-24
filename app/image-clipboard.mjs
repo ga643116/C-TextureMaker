@@ -21,7 +21,8 @@ export function createImageClipboard({host,clipboard=globalThis.navigator?.clipb
    if(reply.empty){job.resolve(null);return;}
    if(reply.mime!=='image/png'||typeof reply.base64!=='string'||reply.base64.length%4||reply.base64.length>Math.ceil(MAX_BYTES/3)*4||!/^[A-Za-z0-9+/]*={0,2}$/.test(reply.base64))throw new Error('Invalid clipboard image');
    const binary=atob(reply.base64);if(!binary.length||binary.length>MAX_BYTES)throw new Error('Invalid clipboard image size');
-   job.resolve(asFile(new Blob([Uint8Array.from(binary,c=>c.charCodeAt(0))],{type:'image/png'})));
+   const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+   job.resolve(asFile(new Blob([bytes],{type:'image/png'})));
   }catch(error){job.reject(error);}
  });
  return {native:Boolean(native),async read(){

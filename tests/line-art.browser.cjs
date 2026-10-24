@@ -73,7 +73,7 @@ async function download(page,action){const pending=page.waitForEvent('download')
   await addPattern('redraw');await page.locator('[data-action="redraw-generate"]').click();
   await page.waitForFunction(()=>document.querySelector('#redraw-generation-status')?.dataset.state==='ready',null,{timeout:30000});
   await page.locator('[data-action="redraw-mode"][data-mode="outline"]').click();
-  await page.locator('#artboard [data-flow-lines]').waitFor();
+  await page.locator('#artboard g:has(> [data-redraw-region]) [data-flow-lines]').waitFor();
   await set(page,'lineDetail',179);assert.ok(await page.locator('#artboard [data-redraw-region]').count());
   await page.screenshot({path:path.join(output,'redraw-flow-outline.png')});
   await selectLayer(lineartLayerId);
